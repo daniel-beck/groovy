@@ -110,7 +110,7 @@ class JsonOutputTest extends GroovyTestCase {
         assert toJson("\t") == '"\\t"'
 
         assert toJson('"') == '"\\""'
-        assert toJson("/") == '"\\/"'
+//        assert toJson("/") == '"\\/"'
         assert toJson("\\") == '"\\\\"'
 
         assert toJson("\u0001") == '"\\u0001"' 
@@ -136,6 +136,24 @@ class JsonOutputTest extends GroovyTestCase {
         char[] charArray = ['a', 'b', 'c']
 
         assert toJson(charArray) == '["a","b","c"]'
+    }
+
+    void testDate() {
+        def d = Date.parse("yyyy/MM/dd HH:mm:ss Z", "2008/03/04 13:50:00 +0100")
+
+        assert toJson(d) == '"2008-03-04T12:50:00+0000"'
+    }
+
+    void testURL() {
+        assert toJson(new URL("http://glaforge.appspot.com")) == '"http://glaforge.appspot.com"'
+    }
+
+    void testCalendar() {
+        def c = GregorianCalendar.getInstance(TimeZone.getTimeZone('GMT+1'))
+        c.clearTime()
+        c.set(year: 2008, month: Calendar.MARCH, date: 4, hourOfDay: 13, minute: 50)
+
+        assert toJson(c) == '"2008-03-04T12:50:00+0000"'
     }
 
     void testComplexObject() {
@@ -218,6 +236,19 @@ class JsonOutputTest extends GroovyTestCase {
             }""".stripIndent()
     }
 
+    void testPrettyPrintDoubleQuoteEscape() {
+        def json = new JsonBuilder()
+
+        json.text { content 'abc"def' }
+
+        assert json.toPrettyString() == """\
+            {
+                "text": {
+                    "content": "abc\\"def"
+                }
+            }""".stripIndent()
+    }
+
     void testSerializePogos() {
         def city = new JsonCity("Paris", [
                 new JsonDistrict(1, [
@@ -263,6 +294,29 @@ class JsonOutputTest extends GroovyTestCase {
                 ]
             }'''.stripIndent()
     }
+
+    void testMapWithNullKey() {
+        shouldFail IllegalArgumentException, {
+            toJson([(null): 1])
+        }
+    }
+
+    void testGROOVY5247() {
+        def m = new TreeMap()
+        m.a = 1
+        assert toJson(m) == '{"a":1}'
+    }
+
+	void testObjectWithDeclaredPropertiesField() {
+		def person = new JsonObject(name: "pillow", properties: [state: "fluffy", color: "white"])
+		def json = toJson(person)
+		assert json == '{"properties":{"state":"fluffy","color":"white"},"name":"pillow"}'
+	}
+	
+	void testGROOVY5494() {
+		def json = toJson(new JsonFoo(name: "foo"))
+		assert json == '{"properties":0,"name":"foo"}'
+	}
 }
 
 @Canonical
@@ -281,6 +335,16 @@ class JsonDistrict {
 class JsonStreet {
     String streetName
     JsonStreetKind kind
+}
+
+class JsonObject {
+	String name
+	Map properties
+}
+
+class JsonFoo {
+	String name
+	int getProperties() { return 0 }
 }
 
 enum JsonStreetKind {

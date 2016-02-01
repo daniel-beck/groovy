@@ -166,14 +166,13 @@ public class Verifier implements GroovyClassVisitor, Opcodes {
         addInitialization(node);
         checkReturnInObjectInitializer(node.getObjectInitializerStatements());
         node.getObjectInitializerStatements().clear();
-        addCovariantMethods(node);
         node.visitContents(this);
+        addCovariantMethods(node);
     }
 
     private FieldNode checkFieldDoesNotExist(ClassNode node, String fieldName) {
-        for (ClassNode current = node; current!=null; current=current.getSuperClass()) {
-            FieldNode ret = current.getDeclaredField(fieldName);
-            if (ret == null) continue;
+        FieldNode ret = node.getDeclaredField(fieldName);
+        if (ret != null) {
             if (    Modifier.isPublic(ret.getModifiers()) &&
                     ret.getType().redirect()==ClassHelper.boolean_TYPE) {
                 return ret;
@@ -621,6 +620,33 @@ public class Verifier implements GroovyClassVisitor, Opcodes {
 
     protected void addPropertyMethod(MethodNode method) {
         classNode.addMethod(method);
+        // GROOVY-4415 / GROOVY-4645: check that there's no abstract method which corresponds to this one
+        List<MethodNode> abstractMethods = classNode.getAbstractMethods();
+        if (abstractMethods==null) return;
+        String methodName = method.getName();
+        Parameter[] parameters = method.getParameters();
+        ClassNode methodReturnType = method.getReturnType();
+        for (MethodNode node : abstractMethods) {
+            if (!node.getDeclaringClass().equals(classNode)) continue;
+            if (node.getName().equals(methodName)
+                    && node.getParameters().length==parameters.length) {
+                if (parameters.length==1) {
+                    // setter
+                    ClassNode abstractMethodParameterType = node.getParameters()[0].getType();
+                    ClassNode methodParameterType = parameters[0].getType();
+                    if (!methodParameterType.isDerivedFrom(abstractMethodParameterType) && !methodParameterType.implementsInterface(abstractMethodParameterType)) {
+                        continue;
+                    }
+                }
+                ClassNode nodeReturnType = node.getReturnType();
+                if (!methodReturnType.isDerivedFrom(nodeReturnType) && !methodReturnType.implementsInterface(nodeReturnType)) {
+                    continue;
+                }
+                // matching method, remove abstract status and use the same body
+                node.setModifiers(node.getModifiers() ^ ACC_ABSTRACT);
+                node.setCode(method.getCode());
+            }
+        }
     }
 
     // Implementation methods
@@ -645,8 +671,23 @@ public class Verifier implements GroovyClassVisitor, Opcodes {
                 } else {
                     code = new ReturnStatement(expression);
                 }
-
                 MethodNode newMethod = new MethodNode(method.getName(), method.getModifiers(), method.getReturnType(), newParams, method.getExceptions(), code);
+                // GROOVY-5681
+                for (Expression argument : arguments.getExpressions()) {
+                    if (argument instanceof CastExpression) {
+                        argument = ((CastExpression) argument).getExpression();
+                    }
+                    if (argument instanceof ConstructorCallExpression) {
+                        ClassNode type = argument.getType();
+                        if (type instanceof InnerClassNode && ((InnerClassNode) type).isAnonymous()) {
+                            type.setEnclosingMethod(newMethod);
+                        }
+                    }
+                }
+                List<AnnotationNode> annotations = method.getAnnotations();
+                if(annotations != null) {
+                    newMethod.addAnnotations(annotations);
+                }
                 MethodNode oldMethod = node.getDeclaredMethod(method.getName(), newParams);
                 if (oldMethod != null) {
                     throw new RuntimeParserException(
@@ -811,34 +852,34 @@ public class Verifier implements GroovyClassVisitor, Opcodes {
         }
 
         statements.addAll(node.getObjectInitializerStatements());
-        if (!statements.isEmpty()) {
-            Statement code = constructorNode.getCode();
-            BlockStatement block = new BlockStatement();
-            List<Statement> otherStatements = block.getStatements();
-            if (code instanceof BlockStatement) {
-                block = (BlockStatement) code;
-                otherStatements = block.getStatements();
-            } else if (code != null) {
-                otherStatements.add(code);
-            }
-            if (!otherStatements.isEmpty()) {
-                if (first != null) {
-                    // it is super(..) since this(..) is already covered
-                    otherStatements.remove(0);
-                    statements.add(0, firstStatement);
-                }
-                Statement stmtThis$0 = getImplicitThis$0StmtIfInnerClass(otherStatements);
-                if (stmtThis$0 != null) {
-                    // since there can be field init statements that depend on method/property dispatching
-                    // that uses this$0, it needs to bubble up just after the constructor call.
-                    statements.add(1, stmtThis$0);
-                }
-                statements.addAll(otherStatements);
-            }
-            BlockStatement newBlock = new BlockStatement(statements, block.getVariableScope());
-            newBlock.setSourcePosition(block);
-            constructorNode.setCode(newBlock);
+
+        Statement code = constructorNode.getCode();
+        BlockStatement block = new BlockStatement();
+        List<Statement> otherStatements = block.getStatements();
+        if (code instanceof BlockStatement) {
+            block = (BlockStatement) code;
+            otherStatements = block.getStatements();
+        } else if (code != null) {
+            otherStatements.add(code);
         }
+        if (!otherStatements.isEmpty()) {
+            if (first != null) {
+                // it is super(..) since this(..) is already covered
+                otherStatements.remove(0);
+                statements.add(0, firstStatement);
+            }
+            Statement stmtThis$0 = getImplicitThis$0StmtIfInnerClass(otherStatements);
+            if (stmtThis$0 != null) {
+                // since there can be field init statements that depend on method/property dispatching
+                // that uses this$0, it needs to bubble up before the super call itself (GROOVY-4471)
+                statements.add(0, stmtThis$0);
+            }
+            statements.addAll(otherStatements);
+        }
+        BlockStatement newBlock = new BlockStatement(statements, block.getVariableScope());
+        newBlock.setSourcePosition(block);
+        constructorNode.setCode(newBlock);
+
 
 
         if (!staticStatements.isEmpty()) {
@@ -869,21 +910,28 @@ public class Verifier implements GroovyClassVisitor, Opcodes {
                 List<Statement> stmts = ((BlockStatement) stmt).getStatements();
                 for (Statement bstmt : stmts) {
                     if (bstmt instanceof ExpressionStatement) {
-                        Expression expr = ((ExpressionStatement) bstmt).getExpression();
-                        if (expr instanceof BinaryExpression) {
-                            Expression lExpr = ((BinaryExpression) expr).getLeftExpression();
-                            if (lExpr instanceof FieldExpression) {
-                                if ("this$0".equals(((FieldExpression) lExpr).getFieldName())) {
-                                    stmts.remove(bstmt); // remove from here and let the caller reposition it
-                                    return bstmt;
-                                }
-                            }
-                        }
+                        if (extractImplicitThis$0StmtIfInnerClassFromExpression(stmts, bstmt)) return bstmt;
                     }
                 }
+            } else if (stmt instanceof ExpressionStatement) {
+                if (extractImplicitThis$0StmtIfInnerClassFromExpression(otherStatements, stmt)) return stmt;
             }
         }
         return null;
+    }
+
+    private boolean extractImplicitThis$0StmtIfInnerClassFromExpression(final List<Statement> stmts, final Statement bstmt) {
+        Expression expr = ((ExpressionStatement) bstmt).getExpression();
+        if (expr instanceof BinaryExpression) {
+            Expression lExpr = ((BinaryExpression) expr).getLeftExpression();
+            if (lExpr instanceof FieldExpression) {
+                if ("this$0".equals(((FieldExpression) lExpr).getFieldName())) {
+                    stmts.remove(bstmt); // remove from here and let the caller reposition it
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private ConstructorCallExpression getFirstIfSpecialConstructorCall(Statement code) {
@@ -913,7 +961,13 @@ public class Verifier implements GroovyClassVisitor, Opcodes {
             if (fieldNode.isStatic()) {
                 // GROOVY-3311: pre-defined constants added by groovy compiler for numbers/characters should be
                 // initialized first so that code dependent on it does not see their values as empty
-                if (expression instanceof ConstantExpression) {
+                Expression initialValueExpression = fieldNode.getInitialValueExpression();
+                if (initialValueExpression instanceof ConstantExpression) {
+                    ConstantExpression cexp = (ConstantExpression) initialValueExpression;
+                    cexp = transformToPrimitiveConstantIfPossible(cexp);
+                    if (fieldNode.isFinal() && ClassHelper.isStaticConstantInitializerType(cexp.getType()) && cexp.getType().equals(fieldNode.getType())) {
+                        return; // GROOVY-5150: primitive type constants will be initialized directly
+                    }
                     staticList.add(0, statement);
                 } else {
                     staticList.add(statement);
@@ -1212,11 +1266,7 @@ public class Verifier implements GroovyClassVisitor, Opcodes {
 
     private boolean isAssignable(ClassNode node, ClassNode testNode) {
         if (testNode.isInterface()) {
-            if (node.isInterface()) {
-                if (node.isDerivedFrom(testNode)) return true;
-            } else {
-                if (node.implementsInterface(testNode)) return true;
-            }
+            if (node.equals(testNode) || node.implementsInterface(testNode)) return true;
         } else {
             if (node.isDerivedFrom(testNode)) return true;
         }
@@ -1349,6 +1399,35 @@ public class Verifier implements GroovyClassVisitor, Opcodes {
         }
 
         return true;
+    }
+
+    /**
+     * When constant expressions are created, the value is always wrapped to a non primitive type.
+     * Some constant expressions are optimized to return primitive types, but not all primitives are
+     * handled. This method guarantees to return a similar constant expression but with a primitive type
+     * instead of a boxed type.
+     *
+     * Additionaly, single char strings are converted to 'char' types.
+     *
+     * @param constantExpression a constant expression
+     * @return the same instance of constant expression if the type is already primitive, or a primitive
+     * constant if possible.
+     */
+    public static ConstantExpression transformToPrimitiveConstantIfPossible(ConstantExpression constantExpression) {
+        Object value = constantExpression.getValue();
+        if (value ==null) return constantExpression;
+        ConstantExpression result;
+        ClassNode type = constantExpression.getType();
+        if (ClassHelper.isPrimitiveType(type)) return constantExpression;
+        if (value instanceof String && ((String)value).length()==1) {
+            result = new ConstantExpression(((String)value).charAt(0));
+            result.setType(ClassHelper.char_TYPE);
+        } else {
+            type = ClassHelper.getUnwrapper(type);
+            result = new ConstantExpression(value, true);
+            result.setType(type);
+        }
+        return result;
     }
 
 }

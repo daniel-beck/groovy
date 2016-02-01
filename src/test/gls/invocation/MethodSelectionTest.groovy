@@ -248,6 +248,40 @@ public class MethodSelectionTest extends CompilableTestSupport {
     foo.setMyFloat2 new BigInteger('1')
     assert foo.getMyFloat2() == 1.0
   }
+  
+  void testCallWithExendedBigDecimal() {
+      assertScript """
+        BigDecimal f (BigDecimal x) {
+            return x
+        }
+        
+        public class ExtendedBigDecimal extends java.math.BigDecimal {
+            public ExtendedBigDecimal (int i) {
+                super (i)
+            }
+        }
+        
+        assert f(new ExtendedBigDecimal(1)) == 1      
+      """
+  }
+  
+  void testVargsClass() {
+      assertScript """
+        interface Parent {}
+        interface Child extends Parent {}
+        
+        class Child1 implements Child { }
+        def a = new Child1()
+        
+        class Child2 implements Child { }
+        def b = new Child2()
+        
+        def foo(Parent... values) { 
+          assert values.class == Parent[]
+        }
+        foo(a, b)
+      """
+  }
 }
 
 class Foo3977 {

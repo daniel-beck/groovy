@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2009 the original author or authors.
+ * Copyright 2003-2012 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,13 +15,16 @@
  */
 package org.codehaus.groovy.classgen.asm;
 
+import groovy.lang.GroovyRuntimeException;
 import org.codehaus.groovy.GroovyBugError;
 import org.codehaus.groovy.ast.ClassHelper;
 import org.codehaus.groovy.ast.ClassNode;
+import org.codehaus.groovy.ast.Variable;
 import org.codehaus.groovy.ast.expr.ArgumentListExpression;
 import org.codehaus.groovy.ast.expr.BinaryExpression;
 import org.codehaus.groovy.ast.expr.ClassExpression;
 import org.codehaus.groovy.ast.expr.ConstantExpression;
+import org.codehaus.groovy.ast.expr.ElvisOperatorExpression;
 import org.codehaus.groovy.ast.expr.EmptyExpression;
 import org.codehaus.groovy.ast.expr.Expression;
 import org.codehaus.groovy.ast.expr.FieldExpression;
@@ -29,11 +32,15 @@ import org.codehaus.groovy.ast.expr.MethodCallExpression;
 import org.codehaus.groovy.ast.expr.PostfixExpression;
 import org.codehaus.groovy.ast.expr.PrefixExpression;
 import org.codehaus.groovy.ast.expr.PropertyExpression;
+import org.codehaus.groovy.ast.expr.TernaryExpression;
 import org.codehaus.groovy.ast.expr.TupleExpression;
 import org.codehaus.groovy.ast.expr.VariableExpression;
+import org.codehaus.groovy.ast.tools.WideningCategories;
 import org.codehaus.groovy.classgen.AsmClassGenerator;
 import org.codehaus.groovy.classgen.BytecodeExpression;
 import org.codehaus.groovy.runtime.ScriptBytecodeAdapter;
+import org.codehaus.groovy.syntax.SyntaxException;
+import org.codehaus.groovy.syntax.Token;
 import org.codehaus.groovy.syntax.Types;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
@@ -238,12 +245,18 @@ public class BinaryExpressionHelper {
             evaluateCompareExpression(isCaseMethod, expression);
             break;
 
+        case COMPARE_IDENTICAL:
+        case COMPARE_NOT_IDENTICAL:
+            Token op = expression.getOperation();
+            Throwable cause = new SyntaxException("Operator " + op + " not supported", op.getStartLine(), op.getStartColumn());
+            throw new GroovyRuntimeException(cause);
+
         default:
             throw new GroovyBugError("Operation: " + expression.getOperation() + " not supported");
         }
     }
     
-    protected void assignToArray(Expression parrent, Expression receiver, Expression index, Expression rhsValueLoader) {
+    protected void assignToArray(Expression parent, Expression receiver, Expression index, Expression rhsValueLoader) {
         // let's replace this assignment to a subscript operator with a
         // method call
         // e.g. x[5] = 10
@@ -284,7 +297,16 @@ public class BinaryExpressionHelper {
             //rhsType = getCastType(rightExpression);
             rhsType = controller.getOperandStack().getTopOperand();
         }
-        int rhsValueId = compileStack.defineTemporaryVariable("$rhs", rhsType, true);
+        boolean directAssignment = defineVariable && !(leftExpression instanceof TupleExpression);
+        int rhsValueId;
+        if (directAssignment) {
+            VariableExpression var = (VariableExpression) leftExpression;
+            rhsType = controller.getTypeChooser().resolveType(var, controller.getClassNode());
+            operandStack.doGroovyCast(rhsType);
+            rhsValueId = compileStack.defineVariable(var, rhsType, true).getIndex();
+        } else {
+            rhsValueId = compileStack.defineTemporaryVariable("$rhs", rhsType, true);
+        }
         //TODO: if rhs is VariableSlotLoader already, then skip crating a new one
         BytecodeExpression rhsValueLoader = new VariableSlotLoader(rhsType,rhsValueId,operandStack); 
         
@@ -322,17 +344,18 @@ public class BinaryExpressionHelper {
         } 
         // single declaration
         else if (defineVariable) {
-            VariableExpression var = (VariableExpression) leftExpression;
             rhsValueLoader.visit(acg);
-            operandStack.doGroovyCast(var);
-            compileStack.defineVariable(var, true);
             operandStack.remove(1);
+            compileStack.popLHS();
+            return;
         } 
         // normal assignment
         else {
             int mark = operandStack.getStackLength();
             // to leave a copy of the rightExpression value on the stack after the assignment.
             rhsValueLoader.visit(acg);
+            ClassNode type = controller.getTypeChooser().resolveType(leftExpression, controller.getClassNode());
+            operandStack.doGroovyCast(type);
             leftExpression.visit(acg);
             operandStack.remove(operandStack.getStackLength()-mark);
         }
@@ -626,11 +649,12 @@ public class BinaryExpressionHelper {
                 // we store the result of the subscription on the stack
                 Expression subscript = be.getRightExpression();
                 subscript.visit(controller.getAcg());
-                operandStack.box(); //TODO: maybe not box here anymore, but need subscript type then
-                int id = controller.getCompileStack().defineTemporaryVariable("$subscript", true);
-                VariableSlotLoader subscriptExpression = new VariableSlotLoader(id,operandStack);
+                ClassNode subscriptType = operandStack.getTopOperand();
+                int id = controller.getCompileStack().defineTemporaryVariable("$subscript", subscriptType, true);
+                VariableSlotLoader subscriptExpression = new VariableSlotLoader(subscriptType, id, operandStack);
                 // do modified visit
                 BinaryExpression newBe = new BinaryExpression(be.getLeftExpression(), be.getOperation(), subscriptExpression);
+                newBe.copyNodeMetaData(be);
                 newBe.setSourcePosition(be);
                 newBe.visit(controller.getAcg());
                 return subscriptExpression;
@@ -679,7 +703,7 @@ public class BinaryExpressionHelper {
         // at this point the receiver will be already on the stack.
         // in a[1]++ the method will be "++" aka "next" and the receiver a[1]
         
-        ClassNode BEType = BinaryExpressionMultiTypeDispatcher.getType(expression,controller.getClassNode());
+        ClassNode BEType = controller.getTypeChooser().resolveType(expression, controller.getClassNode());
         Expression callSiteReceiverSwap = new BytecodeExpression(BEType) {
             @Override
             public void visit(MethodVisitor mv) {
@@ -711,5 +735,108 @@ public class BinaryExpressionHelper {
         // now rhs is completely done and we need only to store. In a[1]++ this 
         // would be a.getAt(1).next() for the rhs, "lhs" code is a.putAt(1, rhs)
          
+    }
+    
+    private void evaluateElvisOperatorExpression(ElvisOperatorExpression expression) {
+        MethodVisitor mv = controller.getMethodVisitor();
+        CompileStack compileStack = controller.getCompileStack();
+        OperandStack operandStack = controller.getOperandStack();
+        TypeChooser typeChooser = controller.getTypeChooser();
+        
+        Expression boolPart = expression.getBooleanExpression().getExpression();
+        Expression falsePart = expression.getFalseExpression();
+        
+        ClassNode truePartType = typeChooser.resolveType(boolPart, controller.getClassNode());
+        ClassNode falsePartType = typeChooser.resolveType(falsePart, controller.getClassNode());
+        ClassNode common = WideningCategories.firstCommonSuperType(truePartType, falsePartType);
+        
+        // x?:y is equal to x?x:y, which evals to 
+        //      var t=x; boolean(t)?t:y
+        // first we load x, dup it, convert the dupped to boolean, then 
+        // jump depending on the value. For true we are done, for false we
+        // have to load y, thus we first remove x and then load y. 
+        // But since x and y may have different stack lengths, this cannot work
+        // Thus we have to have to do the following:
+        // Be X the type of x, Y the type of y and S the common supertype of 
+        // X and Y, then we have to see x?:y as  
+        //      var t=x;boolean(t)?S(t):S(y)
+        // so we load x, dup it, store the value in a local variable (t), then 
+        // do boolean conversion. In the true part load t and cast it to S, 
+        // in the false part load y and cast y to S 
+
+        // load x, dup it, store one in $t and cast the remaining one to boolean
+        int mark = operandStack.getStackLength();
+        boolPart.visit(controller.getAcg());
+        operandStack.dup();
+        int retValueId = compileStack.defineTemporaryVariable("$t", truePartType, true);
+        operandStack.castToBool(mark,true);
+        
+        Label l0 = operandStack.jump(IFEQ);
+        // true part: load $t and cast to S
+        operandStack.load(truePartType, retValueId);
+        operandStack.doGroovyCast(common);
+        Label l1 = new Label();
+        mv.visitJumpInsn(GOTO, l1);
+        
+        // false part: load false expression and cast to S
+        mv.visitLabel(l0);
+        falsePart.visit(controller.getAcg());        
+        operandStack.doGroovyCast(common);
+        
+        // finish and cleanup
+        mv.visitLabel(l1);
+        compileStack.removeVar(retValueId);
+        controller.getOperandStack().replace(common, 2);        
+        
+    }
+    
+    private void evaluateNormalTernary(TernaryExpression expression) {
+        MethodVisitor mv = controller.getMethodVisitor();
+        OperandStack operandStack = controller.getOperandStack();
+        TypeChooser typeChooser = controller.getTypeChooser();
+        
+        Expression boolPart = expression.getBooleanExpression();
+        Expression truePart = expression.getTrueExpression();
+        Expression falsePart = expression.getFalseExpression();
+        
+        ClassNode truePartType = typeChooser.resolveType(truePart, controller.getClassNode());
+        ClassNode falsePartType = typeChooser.resolveType(falsePart, controller.getClassNode());
+        ClassNode common = WideningCategories.firstCommonSuperType(truePartType, falsePartType);
+        
+        // we compile b?x:y as 
+        //      boolean(b)?S(x):S(y), S = common super type of x,y
+        // so we load b, do boolean conversion. 
+        // In the true part load x and cast it to S, 
+        // in the false part load y and cast y to S 
+
+        // load b and convert to boolean
+        int mark = operandStack.getStackLength();
+        boolPart.visit(controller.getAcg());
+        operandStack.castToBool(mark,true);
+        
+        Label l0 = operandStack.jump(IFEQ);
+        // true part: load x and cast to S
+        truePart.visit(controller.getAcg());
+        operandStack.doGroovyCast(common);
+        Label l1 = new Label();
+        mv.visitJumpInsn(GOTO, l1);
+        
+        // false part: load y and cast to S
+        mv.visitLabel(l0);
+        falsePart.visit(controller.getAcg());        
+        operandStack.doGroovyCast(common);
+        
+        // finish and cleanup
+        mv.visitLabel(l1);
+        controller.getOperandStack().replace(common, 2);        
+        
+    }
+
+    public void evaluateTernary(TernaryExpression expression) {
+        if (expression instanceof ElvisOperatorExpression) {
+            evaluateElvisOperatorExpression((ElvisOperatorExpression) expression);
+        } else {
+            evaluateNormalTernary(expression);
+        }
     }
 }

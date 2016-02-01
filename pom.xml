@@ -8,7 +8,7 @@
     <name>Groovy</name>
     <packaging>jar</packaging>
     
-    <version>1.8.2-jenkins-1</version>
+    <version>1.8.9-jenkins-1</version>
 
     <description>
         Groovy: A powerful, dynamic language for the JVM
@@ -24,8 +24,8 @@
     <inceptionYear>2003</inceptionYear>
 
     <scm>
-        <connection>scm:git:git://git.codehaus.org/groovy-git.git</connection>
-        <developerConnection>scm:git:ssh://git@git.codehaus.org/groovy-git.git</developerConnection>
+        <connection>scm:git:git://git@git.codehaus.org/groovy-git.git</connection>
+        <developerConnection>scm:svn:ssh://git@git.codehaus.org/groovy-git.git</developerConnection>
         <url>http://git.codehaus.org/gitweb.cgi?p=groovy-git.git</url>
     </scm>
 
@@ -44,16 +44,24 @@
         </mailingList>
     </mailingLists>
 
+    <licenses>
+        <license>
+            <name>The Apache Software License, Version 2.0</name>
+            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
     <distributionManagement>
         <repository>
             <id>codehaus.org</id>
             <name>Groovy Central Repository</name>
-            <url>dav:https://dav.codehaus.org/repository/groovy/</url>
+            <url>dav:https://dav.codehaus.org/repository/groovy</url>
         </repository>
         <snapshotRepository>
             <id>codehaus.org</id>
             <name>Groovy Central Development Repository</name>
-            <url>dav:https://dav.codehaus.org/snapshots.repository/groovy/</url>
+            <url>dav:https://dav.codehaus.org/snapshots.repository/groovy</url>
             <uniqueVersion>false</uniqueVersion>
         </snapshotRepository>
         <!-- not currently used -->
@@ -377,6 +385,15 @@
                 <role>Developer</role>
             </roles>
         </developer>
+        <developer>
+            <name>Cédric Champeau</name>
+            <id>melix</id>
+            <email>cedric.champeau@gmail.com</email>
+            <organization></organization>
+            <roles>
+                <role>Developer</role>
+            </roles>
+        </developer>
     </developers>
 
     <contributors>
@@ -557,15 +574,43 @@
             <email></email>
         </contributor>
         <contributor>
-            <name>Cédric Champeau</name>
-            <email></email>
-        </contributor>
-        <contributor>
             <name>David Durham</name>
             <email></email>
         </contributor>
         <contributor>
             <name>Daniel Henrique Alves Lima</name>
+            <email></email>
+        </contributor>
+        <contributor>
+            <name>John Wagenleitner</name>
+            <email></email>
+        </contributor>
+        <contributor>
+            <name>Colin Harrington</name>
+            <email></email>
+        </contributor>
+        <contributor>
+            <name>Brian Alexander</name>
+            <email></email>
+        </contributor>
+        <contributor>
+            <name>Jan Weitz</name>
+            <email></email>
+        </contributor>
+        <contributor>
+            <name>Joachim Baumann</name>
+            <email></email>
+        </contributor>
+        <contributor>
+            <name>David Sutherland</name>
+            <email></email>
+        </contributor>
+        <contributor>
+            <name>Mattias Reichel</name>
+            <email></email>
+        </contributor>
+        <contributor>
+            <name>David Lee</name>
             <email></email>
         </contributor>
     </contributors>
@@ -588,7 +633,7 @@
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
-            <version>4.8.2</version>
+            <version>4.10</version>
             <scope>compile</scope>
             <optional>true</optional>
         </dependency>
@@ -608,28 +653,28 @@
         <dependency>
             <groupId>org.apache.ant</groupId>
             <artifactId>ant</artifactId>
-            <version>1.8.2</version>
+            <version>1.8.3</version>
             <scope>compile</scope>
             <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.apache.ant</groupId>
             <artifactId>ant-junit</artifactId>
-            <version>1.8.2</version>
+            <version>1.8.3</version>
             <scope>runtime</scope>
             <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.apache.ant</groupId>
             <artifactId>ant-launcher</artifactId>
-            <version>1.8.2</version>
+            <version>1.8.3</version>
             <scope>runtime</scope>
             <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.apache.ant</groupId>
             <artifactId>ant-antlr</artifactId>
-            <version>1.8.2</version>
+            <version>1.8.3</version>
             <scope>runtime</scope>
             <optional>true</optional>
         </dependency>
@@ -785,28 +830,7 @@
         <dependency>
             <groupId>org.codehaus.gpars</groupId>
             <artifactId>gpars</artifactId>
-            <version>0.11</version>
-            <scope>runtime</scope>
-            <optional>true</optional>
-        </dependency>
-        <dependency>
-            <groupId>org.coconut.forkjoin</groupId>
-            <artifactId>jsr166y</artifactId>
-            <version>070108</version>
-            <scope>runtime</scope>
-            <optional>true</optional>
-        </dependency>
-        <dependency>
-            <groupId>org.codehaus.jsr166-mirror</groupId>
-            <artifactId>jsr166y</artifactId>
-            <version>1.7.0</version>
-            <scope>runtime</scope>
-            <optional>true</optional>
-        </dependency>
-        <dependency>
-            <groupId>org.codehaus.jsr166-mirror</groupId>
-            <artifactId>extra166y</artifactId>
-            <version>1.7.0</version>
+            <version>1.0.0</version>
             <scope>runtime</scope>
             <optional>true</optional>
         </dependency>
@@ -816,7 +840,7 @@
         <dependency>
             <groupId>jline</groupId>
             <artifactId>jline</artifactId>
-            <version>0.9.94</version>
+            <version>1.0</version>
             <scope>compile</scope>
             <optional>true</optional>
             <exclusions>
@@ -874,7 +898,7 @@
         <dependency>
             <groupId>org.apache.ant</groupId>
             <artifactId>ant-testutil</artifactId>
-            <version>1.8.2</version>
+            <version>1.8.3</version>
             <scope>test</scope>
         </dependency>
 <!--

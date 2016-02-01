@@ -27,7 +27,7 @@ import java.util.ArrayList;
  * @see Duration
  * @author John Wilson tug@wilson.co.uk
  */
-public abstract class BaseDuration {
+public abstract class BaseDuration implements Comparable<BaseDuration> {
     protected final int years;
     protected final int months;    
     protected final int days;
@@ -102,8 +102,11 @@ public abstract class BaseDuration {
         if (this.hours      != 0) buffer.add(this.hours   + " hours");
         if (this.minutes    != 0) buffer.add(this.minutes + " minutes");
 
-        if (this.seconds != 0 || this.millis != 0)
-            buffer.add((seconds == 0 ? (millis < 0 ? "-0" : "0") : seconds) + "." + DefaultGroovyMethods.padLeft("" + Math.abs(millis), 3, "0")  + " seconds");
+        if (this.seconds != 0 || this.millis != 0) {
+            int norm_millis = millis % 1000;
+            int norm_seconds = seconds + DefaultGroovyMethods.intdiv(millis - norm_millis, 1000).intValue();
+            buffer.add((norm_seconds == 0 ? (norm_millis < 0 ? "-0" : "0") : norm_seconds) + "." + DefaultGroovyMethods.padLeft("" + Math.abs(norm_millis), 3, "0") + " seconds");
+        }
 
         if (buffer.size()!=0) {
             return DefaultGroovyMethods.join(buffer, ", ");
@@ -117,6 +120,10 @@ public abstract class BaseDuration {
     public abstract Date getAgo();
     
     public abstract From getFrom();
+
+    public int compareTo(BaseDuration otherDuration) {
+        return Long.signum(toMilliseconds() - otherDuration.toMilliseconds());
+    }
 
     public abstract static class From {
         public abstract Date getNow();

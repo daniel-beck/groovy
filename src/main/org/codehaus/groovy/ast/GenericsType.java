@@ -16,6 +16,9 @@
 
 package org.codehaus.groovy.ast;
 
+import java.util.HashSet;
+import java.util.Set;
+
 /**
  * This class is used to describe generic type signatures for ClassNodes.
  *
@@ -53,30 +56,67 @@ public class GenericsType extends ASTNode {
     }
 
     public String toString() {
-        String ret = (type == null || placeholder || wildcard) ? name : genericsBounds(type);
+        Set<String> visited = new HashSet<String>();
+        return toString(visited);
+    }
+
+    private String toString(Set<String> visited) {
+        if (placeholder) visited.add(name);
+        String ret = (type == null || placeholder || wildcard) ? name : genericsBounds(type, visited);
         if (upperBounds != null) {
             ret += " extends ";
             for (int i = 0; i < upperBounds.length; i++) {
-                ret += genericsBounds(upperBounds[i]);
+                ret += genericsBounds(upperBounds[i], visited);
                 if (i + 1 < upperBounds.length) ret += " & ";
             }
         } else if (lowerBound != null) {
-            ret += " super " + genericsBounds(lowerBound);
+            ret += " super " + genericsBounds(lowerBound, visited);
         }
         return ret;
     }
 
-    private String genericsBounds(ClassNode theType) {
-        String ret = theType.getName();
-        GenericsType[] genericsTypes = theType.getGenericsTypes();
-        if (genericsTypes == null || genericsTypes.length == 0) return ret;
-        ret += "<";
-        for (int i = 0; i < genericsTypes.length; i++) {
-            if (i != 0) ret += ", ";
-            ret += genericsTypes[i].toString();
+    private String genericsBounds(ClassNode theType, Set<String> visited) {
+
+        StringBuilder ret = new StringBuilder();
+
+        if (theType.isArray()) {
+            ret.append(theType.getComponentType().getName());
+            ret.append("[]");
+        } else if (theType.redirect() instanceof InnerClassNode) {
+            InnerClassNode innerClassNode = (InnerClassNode) theType.redirect();
+            String parentClassNodeName = innerClassNode.getOuterClass().getName();
+            ret.append(genericsBounds(innerClassNode.getOuterClass(), new HashSet<String>()));
+            ret.append(".");
+            String typeName = theType.getName();
+            ret.append(typeName.substring(parentClassNodeName.length() + 1));
+        } else {
+            ret.append(theType.getName());
         }
-        ret += ">";
-        return ret;
+
+        GenericsType[] genericsTypes = theType.getGenericsTypes();
+        if (genericsTypes == null || genericsTypes.length == 0)
+            return ret.toString();
+
+        // TODO instead of catching Object<T> here stop it from being placed into type in first place
+        if (genericsTypes.length == 1 && genericsTypes[0].isPlaceholder() && theType.getName().equals("java.lang.Object")) {
+            return genericsTypes[0].getName();
+        }
+
+        ret.append("<");
+        for (int i = 0; i < genericsTypes.length; i++) {
+            if (i != 0) ret.append(", ");
+
+            GenericsType type = genericsTypes[i];
+            if (type.isPlaceholder() && visited.contains(type.getName())) {
+                ret.append(type.getName());
+            }
+            else {
+                ret.append(type.toString(visited));
+            }
+        }
+        ret.append(">");
+
+        return ret.toString();
     }
 
     public ClassNode[] getUpperBounds() {

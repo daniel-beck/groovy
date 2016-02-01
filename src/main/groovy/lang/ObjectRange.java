@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2007 the original author or authors.
+ * Copyright 2003-2013 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -104,12 +104,11 @@ public class ObjectRange extends AbstractList implements Range {
             to = ((Float) to).doubleValue();
         }
 
-        // TODO: Should we align to like types?
-//        if (from instanceof Integer && to instanceof Long) {
-//            from = Long.valueOf(((Integer) from).longValue());
-//        } else if (to instanceof Integer && from instanceof Long) {
-//            to = Long.valueOf(((Integer) to).longValue());
-//        }
+        if (from instanceof Integer && to instanceof Long) {
+            from = Long.valueOf(((Integer) from).longValue());
+        } else if (to instanceof Integer && from instanceof Long) {
+            to = Long.valueOf(((Integer) to).longValue());
+        }
 
         // TODO: should we care about different types here?
         if (from.getClass() == to.getClass()) {
@@ -273,7 +272,8 @@ public class ObjectRange extends AbstractList implements Range {
                 char fromNum = (Character) from;
                 char toNum = (Character) to;
                 size = toNum - fromNum + 1;
-            } else if (from instanceof BigDecimal || to instanceof BigDecimal) {
+            } else if (from instanceof BigDecimal || to instanceof BigDecimal ||
+                       from instanceof BigInteger || to instanceof BigInteger) {
                 // let's fast calculate the size
                 BigDecimal fromNum = new BigDecimal("" + from);
                 BigDecimal toNum = new BigDecimal("" + to);

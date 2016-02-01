@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2010 the original author or authors.
+ * Copyright 2003-2012 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.codehaus.groovy.ant;
 
 import groovy.lang.GroovyClassLoader;
@@ -36,11 +35,11 @@ import org.apache.tools.ant.util.SourceFileScanner;
 import org.codehaus.groovy.control.CompilationUnit;
 import org.codehaus.groovy.control.CompilerConfiguration;
 import org.codehaus.groovy.control.SourceExtensionHandler;
+import org.codehaus.groovy.runtime.DefaultGroovyMethods;
 import org.codehaus.groovy.tools.ErrorReporter;
 import org.codehaus.groovy.tools.FileSystemCompiler;
 import org.codehaus.groovy.tools.RootLoader;
 import org.codehaus.groovy.tools.javac.JavaAwareCompilationUnit;
-import org.codehaus.groovy.runtime.DefaultGroovyMethods;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -51,6 +50,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
@@ -87,7 +87,7 @@ import java.util.StringTokenizer;
  * @author Hein Meling
  * @author <a href="mailto:russel.winder@concertant.com">Russel Winder</a>
  * @author Danno Ferrin
- * @version $Revision$
+ * @author Paul King
  */
 public class Groovyc extends MatchingTask {
     private final LoggingHelper log = new LoggingHelper(this);
@@ -102,7 +102,8 @@ public class Groovyc extends MatchingTask {
     private boolean includeAntRuntime = true;
     private boolean includeJavaRuntime = false;
     private boolean fork = false;
-    private File forkJDK;
+    private File forkJavaHome;
+    private String forkedExecutable = null;
     private String memoryInitialSize;
     private String memoryMaximumSize;
     private String scriptExtension = "*.groovy";
@@ -124,6 +125,7 @@ public class Groovyc extends MatchingTask {
     private List<File> temporaryFiles = new ArrayList<File>(2);
     private File stubDir;
     private boolean keepStubs;
+    private String scriptBaseClass;
 
     private Set<String> scriptExtensions = new LinkedHashSet<String>();
 
@@ -495,11 +497,33 @@ public class Groovyc extends MatchingTask {
 
     /**
      * The JDK Home to use when forked.
+     * Ignored if "executable" is specified.
      *
      * @param home the java.home value to use, default is the current JDK's home
      */
     public void setJavaHome(File home) {
-        forkJDK = home;
+        forkJavaHome = home;
+    }
+
+    /**
+     * Sets the name of the java executable to use when
+     * invoking the compiler in forked mode, ignored otherwise.
+     *
+     * @since Groovy 1.8.7
+     * @param forkExecPath the name of the executable
+     */
+    public void setExecutable(String forkExecPath) {
+        forkedExecutable = forkExecPath;
+    }
+
+    /**
+     * The value of the executable attribute, if any.
+     *
+     * @since Groovy 1.8.7
+     * @return the name of the java executable
+     */
+    public String getExecutable() {
+        return forkedExecutable;
     }
 
     /**
@@ -576,6 +600,24 @@ public class Groovyc extends MatchingTask {
      */
     public void setStacktrace(boolean stacktrace) {
         this.stacktrace = stacktrace;
+    }
+
+    /**
+     * Set the base script class name for the scripts (must derive from Script)
+     *
+     * @param scriptBaseClass Base class name for scripts (must derive from Script)
+     */
+    public void setScriptBaseClass(String scriptBaseClass) {
+        this.scriptBaseClass = scriptBaseClass;
+    }
+
+    /**
+     * Get the base script class name for the scripts (must derive from Script)
+     *
+     * @return Base class name for scripts (must derive from Script)
+     */
+    public String getScriptBaseClass() {
+        return this.scriptBaseClass;
     }
 
     /**
@@ -748,7 +790,11 @@ public class Groovyc extends MatchingTask {
                                     StringTokenizer st = new StringTokenizer(value, " ");
                                     while (st.hasMoreTokens()) {
                                         String optionStr = st.nextToken();
-                                        jointOptions.add(optionStr.replace("-X", "-FX"));
+                                        String replaced = optionStr.replace("-X", "-FX");
+                                        if(optionStr == replaced) {
+                                        	replaced = optionStr.replace("-W", "-FW"); // GROOVY-5063
+                                        }
+                                        jointOptions.add(replaced);
                                     }
                                 }
                             }
@@ -760,12 +806,6 @@ public class Groovyc extends MatchingTask {
                 List<String> commandLineList = new ArrayList<String>();
 
                 if (fork) {
-                    String javaHome;
-                    if (forkJDK != null) {
-                        javaHome = forkJDK.getPath();
-                    } else {
-                        javaHome = System.getProperty("java.home");
-                    }
                     if (includeAntRuntime) {
                         classpath.addExisting((new Path(getProject())).concatSystemClasspath("last"));
                     }
@@ -773,9 +813,17 @@ public class Groovyc extends MatchingTask {
                         classpath.addJavaRuntime();
                     }
 
-                    commandLineList.add(javaHome + separator + "bin" + separator + "java");
-                    commandLineList.add("-classpath");
-                    commandLineList.add(classpath.toString());
+                    if (forkedExecutable != null && !forkedExecutable.equals("")) {
+                        commandLineList.add(forkedExecutable);
+                    } else {
+                        String javaHome;
+                        if (forkJavaHome != null) {
+                            javaHome = forkJavaHome.getPath();
+                        } else {
+                            javaHome = System.getProperty("java.home");
+                        }
+                        commandLineList.add(javaHome + separator + "bin" + separator + "java");
+                    }
 
                     final String fileEncodingProp = System.getProperty("file.encoding");
                     if ((fileEncodingProp != null) && !fileEncodingProp.equals("")) {
@@ -796,7 +844,7 @@ public class Groovyc extends MatchingTask {
                         if (tmpExtension.startsWith("*.")) tmpExtension = tmpExtension.substring(1);
                         commandLineList.add("-Dgroovy.default.scriptExtension=" + tmpExtension);
                     }
-                    commandLineList.add("org.codehaus.groovy.tools.FileSystemCompiler");
+                    commandLineList.add(FileSystemCompilerFacade.class.getName());
                 }
                 commandLineList.add("--classpath");
                 commandLineList.add(classpath.toString());
@@ -804,14 +852,20 @@ public class Groovyc extends MatchingTask {
                     commandLineList.add("-j");
                     commandLineList.addAll(jointOptions);
                 }
-                commandLineList.add("-d");
-                commandLineList.add(destDir.getPath());
+                if (destDir != null) {
+                    commandLineList.add("-d");
+                    commandLineList.add(destDir.getPath());
+                }
                 if (encoding != null) {
                     commandLineList.add("--encoding");
                     commandLineList.add(encoding);
                 }
                 if (stacktrace) {
                     commandLineList.add("-e");
+                }
+                if (scriptBaseClass != null) {
+                    commandLineList.add("-b");
+                    commandLineList.add(scriptBaseClass);
                 }
 
                 // check to see if an external file is needed
@@ -858,6 +912,7 @@ public class Groovyc extends MatchingTask {
                     final Execute executor = new Execute(); // new LogStreamHandler ( attributes , Project.MSG_INFO , Project.MSG_WARN ) ) ;
                     executor.setAntRun(getProject());
                     executor.setWorkingDirectory(getProject().getBaseDir());
+                    executor.setEnvironment(addClasspathToEnvironment(executor.getEnvironment(), classpath.toString()));
                     executor.setCommandline(commandLine);
                     try {
                         executor.execute();
@@ -900,7 +955,7 @@ public class Groovyc extends MatchingTask {
                         }
 
                         if (!fileNameErrors) {
-                            FileSystemCompiler.doCompilation(configuration, makeCompileUnit(), filenames);
+                            FileSystemCompiler.doCompilation(configuration, makeCompileUnit(), filenames, false);
                         }
 
                     } catch (Exception re) {
@@ -933,6 +988,12 @@ public class Groovyc extends MatchingTask {
         }
     }
 
+    private String[] addClasspathToEnvironment(String[] oldEnvironment, String classpath) {
+        List<String> newEnvironmentList = (oldEnvironment == null) ? new ArrayList<String>() : Arrays.asList(oldEnvironment);
+        newEnvironmentList.add("CLASSPATH=" + classpath);
+        return newEnvironmentList.toArray(new String[newEnvironmentList.size()]);
+    }
+
     protected CompilationUnit makeCompileUnit() {
         Map<String, Object> options = configuration.getJointCompilationOptions();
         if (options != null) {
@@ -958,6 +1019,10 @@ public class Groovyc extends MatchingTask {
 
 
     protected GroovyClassLoader buildClassLoaderFor() {
+        // GROOVY-5044
+        if (!fork && !getIncludeantruntime()) {
+            throw new IllegalArgumentException("The includeAntRuntime=false option is not compatible with fork=false");
+        }
         ClassLoader parent = getIncludeantruntime()
                 ? getClass().getClassLoader()
                 : new AntClassLoader(new RootLoader(new URL[0], null), getProject(), getClasspath());

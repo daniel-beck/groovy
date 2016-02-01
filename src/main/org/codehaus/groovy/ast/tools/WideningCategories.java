@@ -17,7 +17,10 @@ package org.codehaus.groovy.ast.tools;
 
 import static org.codehaus.groovy.ast.ClassHelper.*;
 
+import org.codehaus.groovy.ast.ClassHelper;
 import org.codehaus.groovy.ast.ClassNode;
+
+import java.util.List;
 
 /**
  * This class provides helper methods to determine the type from a widening 
@@ -37,21 +40,18 @@ import org.codehaus.groovy.ast.ClassNode;
 public class WideningCategories {
     /**
      * It is of an int category, if the provided type is a
-     * byte, char, short, int or any of the wrapper.   
+     * byte, char, short, int.
      */
     public static boolean isIntCategory(ClassNode type) {
-        return  type==byte_TYPE     ||  type==Byte_TYPE      ||
-                type==char_TYPE     ||  type==Character_TYPE ||
-                type==int_TYPE      ||  type==Integer_TYPE   ||
-                type==short_TYPE    ||  type==Short_TYPE;
+        return  type==byte_TYPE     ||  type==char_TYPE     ||
+                type==int_TYPE      ||  type==short_TYPE;
     }
     /**
      * It is of a long category, if the provided type is a
      * long, its wrapper or if it is a long category. 
      */
     public static boolean isLongCategory(ClassNode type) {
-        return  type==long_TYPE     ||  type==Long_TYPE     ||
-                isIntCategory(type);
+        return  type==long_TYPE     ||  isIntCategory(type);
     }
     /**
      * It is of a BigInteger category, if the provided type is a
@@ -69,11 +69,59 @@ public class WideningCategories {
     }
     /**
      * It is of a double category, if the provided type is a
-     * BigDecimal, a float, double or a wrapper of those. C(type)=double
+     * BigDecimal, a float, double. C(type)=double
      */
     public static boolean isDoubleCategory(ClassNode type) {
-        return  type==float_TYPE    ||  type==Float_TYPE    ||
-                type==double_TYPE   ||  type==Double_TYPE   ||
+        return  type==float_TYPE    ||  type==double_TYPE   ||
                 isBigDecCategory(type);
+    }
+
+    public static boolean isNumberCategory(ClassNode type) {
+        return isBigDecCategory(type) || type.isDerivedFrom(Number_TYPE);
+    }
+
+    /**
+     * Given two class nodes, returns the first common supertype, or the class itself
+     * if there are equal. For example, Double and Float would return Number, while
+     * Set and String would return Object.
+     * @param a first class node
+     * @param b second class node
+     * @return first common supertype
+     */
+    public static ClassNode firstCommonSuperType(ClassNode a, ClassNode b) {
+        if (a == null || b == null) return ClassHelper.OBJECT_TYPE;
+        if (a == b || a.equals(b)) return a;
+        if (isPrimitiveType(a) && !isPrimitiveType(b)) {
+            if (isNumberType(a) && isNumberType(b)) {
+                return firstCommonSuperType(ClassHelper.getWrapper(a), b);
+            } else {
+                return OBJECT_TYPE;
+            }
+        } else if (isPrimitiveType(b) && !isPrimitiveType(a)) {
+            if (isNumberType(b) && isNumberType(a)) {
+                return firstCommonSuperType(ClassHelper.getWrapper(b), a);
+            } else {
+                return OBJECT_TYPE;
+            }
+        } else if (isPrimitiveType(a) && isPrimitiveType(b)) {
+            return firstCommonSuperType(ClassHelper.getWrapper(a), ClassHelper.getWrapper(b));
+        }
+        ClassNode superA = a.getSuperClass();
+        ClassNode superB = b.getSuperClass();
+        if (a == superB || a.equals(superB)) return superB;
+        if (b == superA || b.equals(superA)) return superA;
+        return firstCommonSuperType(superA, superB);
+    }
+
+    /**
+     * Given a list of class nodes, returns the first common supertype.
+     * For example, Double and Float would return Number, while
+     * Set and String would return Object.
+     * @param nodes the list of nodes for which to find the first common super type.
+     * @return first common supertype
+     */
+    public static ClassNode firstCommonSuperType(List<ClassNode> nodes) {
+        if (nodes.size()==1) return nodes.get(0);
+        return firstCommonSuperType(nodes.get(0), firstCommonSuperType(nodes.subList(1, nodes.size())));
     }
 }

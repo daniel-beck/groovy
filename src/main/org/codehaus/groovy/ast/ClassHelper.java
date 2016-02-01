@@ -19,6 +19,8 @@ package org.codehaus.groovy.ast;
 import groovy.lang.*;
 
 import org.codehaus.groovy.runtime.GeneratedClosure;
+import org.codehaus.groovy.util.ManagedConcurrentMap;
+import org.codehaus.groovy.util.ReferenceBundle;
 import org.codehaus.groovy.vmplugin.VMPluginFactory;
 import org.objectweb.asm.Opcodes;
 
@@ -27,7 +29,6 @@ import java.math.BigInteger;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.WeakHashMap;
 import java.util.regex.Pattern;
 import java.lang.ref.SoftReference;
 
@@ -47,9 +48,9 @@ public class ClassHelper {
         Closure.class, GString.class, List.class, Map.class, Range.class,
         Pattern.class, Script.class, String.class,  Boolean.class, 
         Character.class, Byte.class, Short.class, Integer.class, Long.class,
-        Double.class, Float.class, BigDecimal.class, BigInteger.class, Void.class,
-        Reference.class, Class.class, MetaClass.class, Iterator.class,    
-        GeneratedClosure.class, GroovyObjectSupport.class
+        Double.class, Float.class, BigDecimal.class, BigInteger.class, 
+        Number.class, Void.class, Reference.class, Class.class, MetaClass.class, 
+        Iterator.class, GeneratedClosure.class, GroovyObjectSupport.class
     };
 
     private static final String[] primitiveClassNames = new String[] {
@@ -75,6 +76,8 @@ public class ClassHelper {
         Double_TYPE = makeCached(Double.class),       Boolean_TYPE = makeCached(Boolean.class),
         BigInteger_TYPE =  makeCached(java.math.BigInteger.class),
         BigDecimal_TYPE = makeCached(java.math.BigDecimal.class),
+        Number_TYPE = makeCached(Number.class),
+        
         void_WRAPPER_TYPE = makeCached(Void.class),   METACLASS_TYPE = makeCached(MetaClass.class),
         Iterator_TYPE = makeCached(Iterator.class),
 
@@ -104,24 +107,16 @@ public class ClassHelper {
         LIST_TYPE, MAP_TYPE, RANGE_TYPE, PATTERN_TYPE,
         SCRIPT_TYPE, STRING_TYPE, Boolean_TYPE, Character_TYPE,
         Byte_TYPE, Short_TYPE, Integer_TYPE, Long_TYPE,
-        Double_TYPE, Float_TYPE, BigDecimal_TYPE, BigInteger_TYPE, 
+        Double_TYPE, Float_TYPE, BigDecimal_TYPE, BigInteger_TYPE,
+        Number_TYPE,
         void_WRAPPER_TYPE, REFERENCE_TYPE, CLASS_Type, METACLASS_TYPE,
         Iterator_TYPE, GENERATED_CLOSURE_Type, GROOVY_OBJECT_SUPPORT_TYPE, 
         GROOVY_OBJECT_TYPE, GROOVY_INTERCEPTABLE_TYPE, Enum_Type, Annotation_TYPE
     };
 
-    
-    private static ClassNode[] numbers = new ClassNode[] {
-        char_TYPE, byte_TYPE, short_TYPE, int_TYPE, long_TYPE, 
-        double_TYPE, float_TYPE, Short_TYPE, Byte_TYPE, Character_TYPE,
-        Integer_TYPE, Float_TYPE, Long_TYPE, Double_TYPE, BigInteger_TYPE,
-        BigDecimal_TYPE
-    };
-
     protected static final ClassNode[] EMPTY_TYPE_ARRAY = {};
     
     public static final String OBJECT = "java.lang.Object";
-
 
     public static ClassNode makeCached(Class c){
         final SoftReference<ClassNode> classNodeSoftReference = ClassHelperCache.classCache.get(c);
@@ -327,6 +322,30 @@ public class ClassHelper {
                 cn == VOID_TYPE;
     }
 
+    /**
+     * Test to determine if a ClassNode is a type belongs to the list of types which
+     * are allowed to initialize constants directly in bytecode instead of using &lt;cinit&gt;
+     *
+     * Note: this only works for ClassNodes created using a
+     * predefined ClassNode
+     *
+     * @see #make(Class)
+     * @see #make(String)
+     * @param cn the ClassNode to be tested
+     * @return true if the ClassNode is of int, float, long, double or String type
+     */
+    public static boolean isStaticConstantInitializerType(ClassNode cn) {
+        return  cn == int_TYPE ||
+                cn == float_TYPE ||
+                cn == long_TYPE ||
+                cn == double_TYPE ||
+                cn == STRING_TYPE ||
+                // the next items require conversion to int when initializing
+                cn == byte_TYPE ||
+                cn == char_TYPE ||
+                cn == short_TYPE;
+    }
+
     public static boolean isNumberType(ClassNode cn) {
         return  cn == Byte_TYPE ||
                 cn == Short_TYPE ||
@@ -343,7 +362,7 @@ public class ClassHelper {
     }
 
     public static ClassNode makeReference() {
-        return make(Reference.class);
+        return REFERENCE_TYPE.getPlainNodeReference();
     }
 
     public static boolean isCachedType(ClassNode type) {
@@ -354,6 +373,6 @@ public class ClassHelper {
     }
 
     static class ClassHelperCache {
-        static Map<Class, SoftReference<ClassNode>> classCache = new WeakHashMap<Class,SoftReference<ClassNode>>();
+        static ManagedConcurrentMap<Class, SoftReference<ClassNode>> classCache = new ManagedConcurrentMap<Class, SoftReference<ClassNode>>(ReferenceBundle.getWeakBundle());
     }
 }

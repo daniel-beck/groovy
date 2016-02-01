@@ -15,12 +15,14 @@
  */
 package org.codehaus.groovy.runtime;
 
+import java.sql.Timestamp;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TimeZone;
 
 /**
  * This class defines new groovy methods which appear on normal JDK
@@ -263,6 +265,32 @@ public class DateGroovyMethods {
     }
 
     /**
+     * Increment a Calendar by one day.
+     *
+     * @param self a Calendar
+     * @return a new Calendar set to the next day
+     * @since 1.8.7
+     */
+    public static Calendar next(Calendar self) {
+        Calendar result = (Calendar) self.clone();
+        result.add(Calendar.DAY_OF_YEAR, 1);
+        return result;
+    }
+
+    /**
+     * Decrement a Calendar by one day.
+     *
+     * @param self a Calendar
+     * @return a new Calendar set to the previous day
+     * @since 1.8.7
+     */
+    public static Calendar previous(Calendar self) {
+        Calendar result = (Calendar) self.clone();
+        result.add(Calendar.DAY_OF_YEAR, -1);
+        return result;
+    }
+
+    /**
      * Increment a java.sql.Date by one day.
      *
      * @param self a java.sql.Date
@@ -323,6 +351,22 @@ public class DateGroovyMethods {
     }
 
     /**
+     * Add number of days to this Timestamp and returns the new Timestamp object.
+     *
+     * @param self a Timestamp
+     * @param days the number of days to increase
+     * @return the new Timestamp
+     */
+    public static Timestamp plus(Timestamp self, int days) {
+        Calendar calendar = (Calendar) Calendar.getInstance().clone();
+        calendar.setTime(self);
+        calendar.add(Calendar.DAY_OF_YEAR, days);
+        Timestamp ts = new Timestamp(calendar.getTime().getTime());
+        ts.setNanos(self.getNanos());
+        return ts;
+    }
+    
+    /**
      * Subtract a number of days from this date and returns the new date.
      *
      * @param self a Date
@@ -347,6 +391,17 @@ public class DateGroovyMethods {
     }
 
     /**
+     * Subtract a number of days from this Timestamp and returns the new Timestamp object.
+     *
+     * @param self a Timestamp
+     * @param days the number of days to subtract
+     * @return the new Timestamp
+     */
+    public static Timestamp minus(Timestamp self, int days) {
+        return plus(self, -days);
+    }
+    
+    /**
      * Subtract another date from this one and return the number of days of the difference.
      * <p/>
      * Date self = Date then + (Date self - Date then)
@@ -358,7 +413,6 @@ public class DateGroovyMethods {
      * @return number of days
      * @since 1.6.0
      */
-
     public static int minus(Calendar self, Calendar then) {
         Calendar a = self;
         Calendar b = then;
@@ -428,6 +482,35 @@ public class DateGroovyMethods {
      */
     public static String format(Date self, String format) {
         return new SimpleDateFormat(format).format(self);
+    }
+
+    /**
+     * <p>Create a String representation of this date according to the given
+     * format pattern and timezone.</p>
+     * <p/>
+     * <p>For example:
+     * <code>
+     * def d = new Date(0)
+     * def tz = TimeZone.getTimeZone('GMT')
+     * println d.format('dd/MMM/yyyy', tz)
+     * </code> would return the string
+     * <code>"01/Jan/1970"</code>. See documentation for {@link java.text.SimpleDateFormat}
+     * for format pattern use.</p>
+     * <p/>
+     * <p>Note that a new DateFormat instance is created for every
+     * invocation of this method (for thread safety).</p>
+     *
+     * @param self   a Date
+     * @param format the format pattern to use according to {@link java.text.SimpleDateFormat}
+     * @param tz     the TimeZone to use
+     * @return a string representation of this date.
+     * @see java.text.SimpleDateFormat
+     * @since 1.8.3
+     */
+    public static String format(Date self, String format, TimeZone tz) {
+        SimpleDateFormat sdf = new SimpleDateFormat(format);
+        sdf.setTimeZone(tz);
+        return sdf.format(self);
     }
 
     /**

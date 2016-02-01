@@ -114,28 +114,13 @@ public class MetaClassRegistryImpl implements MetaClassRegistry{
                 synchronized (metaClassInfo) {
                    metaClassInfo.add(cmcu.getNewMetaClass());
                    Class c = cmcu.getClassToUpdate();
-                   if (c==Integer.class) {
-                       if (cmcu.getNewMetaClass()==null) {
-                           // means removal
-                           DefaultMetaClassInfo.setOrigInt(true);
-                       } else {
-                           DefaultMetaClassInfo.setOrigInt(false);
-                       }
-                   } else if (c.getComponentType()==Integer.class) {
-                       if (cmcu.getNewMetaClass()==null) {
-                           // means removal
-                           DefaultMetaClassInfo.setOrigIntArray(true);
-                       } else {
-                           DefaultMetaClassInfo.setOrigIntArray(false);
-                       }
-                   } else {
-                       Field sdyn;
-                       try {
-                           sdyn = c.getDeclaredField(Verifier.STATIC_METACLASS_BOOL);
-                           sdyn.setBoolean(null, cmcu.getNewMetaClass()!=null);
-                       } catch (Throwable e) {
-                           //DO NOTHING
-                       }
+                   DefaultMetaClassInfo.setPrimitiveMeta(c, cmcu.getNewMetaClass()==null);
+                   Field sdyn;
+                   try {
+                       sdyn = c.getDeclaredField(Verifier.STATIC_METACLASS_BOOL);
+                       sdyn.setBoolean(null, cmcu.getNewMetaClass()!=null);
+                   } catch (Throwable e) {
+                       //DO NOTHING
                    }
 
                 }
@@ -256,14 +241,14 @@ public class MetaClassRegistryImpl implements MetaClassRegistry{
         
         MetaClass mc = null;
         info.lock();
-        try {            
+        try {
             mc = info.getStrongMetaClass();
             info.setStrongMetaClass(newMc);
         } finally {
             info.unlock();
         }
         if ((oldMc == null && mc != newMc) || (oldMc != null && mc != newMc && mc != oldMc)) {
-            fireConstantMetaClassUpdate(theClass, newMc);
+            fireConstantMetaClassUpdate(null, theClass, mc, newMc);
         }
     }
     
@@ -285,16 +270,17 @@ public class MetaClassRegistryImpl implements MetaClassRegistry{
     public void setMetaClass(Object obj, MetaClass theMetaClass) {
         Class theClass = obj.getClass ();
         final ClassInfo info = ClassInfo.getClassInfo(theClass);
-
+        MetaClass oldMC = null;
         info.lock();
         try {
+            oldMC = info.getPerInstanceMetaClass(obj);
             info.setPerInstanceMetaClass(obj, theMetaClass);
         }
         finally {
             info.unlock();
         }
         
-        fireConstantMetaClassUpdate(theClass, theMetaClass);
+        fireConstantMetaClassUpdate(obj, theClass, oldMC, theMetaClass);
     }
 
 
@@ -356,13 +342,15 @@ public class MetaClassRegistryImpl implements MetaClassRegistry{
      * Causes the execution of all registered listeners. This method is used mostly
      * internal to kick of the listener notification. It can also be used by subclasses
      * to achieve the same.
-     * 
+     *
+     * @param obj object instance if the MetaClass change is on a per-instance metaclass (or null if global)
      * @param c the class
+     * @param oldMC the old MetaClass
      * @param newMc the new MetaClass
      */
-    protected void fireConstantMetaClassUpdate(Class c, MetaClass newMc) {
+    protected void fireConstantMetaClassUpdate(Object obj, Class c, final MetaClass oldMC, MetaClass newMc) {
         MetaClassRegistryChangeEventListener[]  listener = getMetaClassRegistryChangeEventListeners();
-        MetaClassRegistryChangeEvent cmcu = new MetaClassRegistryChangeEvent(this, c, newMc);
+        MetaClassRegistryChangeEvent cmcu = new MetaClassRegistryChangeEvent(this, obj, c, oldMC, newMc);
         for (int i = 0; i<listener.length; i++) {
             listener[i].updateConstantMetaClass(cmcu);
         }

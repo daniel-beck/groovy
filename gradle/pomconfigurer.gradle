@@ -23,7 +23,7 @@ project.pomConfigureClosure = {
         modelVersion '4.0.0'
         groupId 'org.codehaus.groovy'
         artifactId 'groovy'
-        version '1.8.2-SNAPSHOT'
+        version '1.8.6-SNAPSHOT'
         name 'Groovy'
         description 'Groovy: A powerful, dynamic language for the JVM'
         url 'http://groovy.codehaus.org/'
@@ -39,6 +39,7 @@ project.pomConfigureClosure = {
                 organization 'SpringSource'
                 roles {
                     role 'Project Manager'
+                    role 'Despot'
                     role 'Developer'
                 }
             }
@@ -188,6 +189,7 @@ project.pomConfigureClosure = {
                 email 'blackdrag@gmx.org'
                 roles {
                     role 'Developer'
+                    role 'Despot'
                 }
             }
             developer {
@@ -233,6 +235,7 @@ project.pomConfigureClosure = {
                 organization 'ASERT, Australia'
                 roles {
                     role 'Developer'
+                    role 'Despot'
                 }
             }
             developer {
@@ -302,6 +305,14 @@ project.pomConfigureClosure = {
                 id 'hamletdrc'
                 name 'Hamlet D\'Arcy'
                 email 'hamletdrc@gmail.com'
+                roles {
+                    role 'Developer'
+                }
+            }
+            developer {
+                id 'melix'
+                name 'Cédric Champeau'
+                email 'cedric.champeau@gmail.com'
                 roles {
                     role 'Developer'
                 }
@@ -443,13 +454,34 @@ project.pomConfigureClosure = {
                 name 'Adam Murdoch'
             }
             contributor {
-                name 'Cédric Champeau'
-            }
-            contributor {
                 name 'David Durham'
             }
             contributor {
                 name 'Daniel Henrique Alves Lima'
+            }
+            contributor {
+                name 'John Wagenleitner'
+            }
+            contributor {
+                name 'Colin Harrington'
+            }
+            contributor {
+                name 'Brian Alexander'
+            }
+            contributor {
+                name 'Jan Weitz'
+            }
+            contributor {
+                name 'Joachim Baumann'
+            }
+            contributor {
+                name 'David Sutherland'
+            }
+            contributor {
+                name 'Mattias Reichel'
+            }
+            contributor {
+                name 'David Lee'
             }
         }
         mailingLists {
@@ -464,6 +496,13 @@ project.pomConfigureClosure = {
             mailingList {
                 name 'Groovy User List'
                 archive 'http://dir.gmane.org/gmane.comp.lang.groovy.user'
+            }
+        }
+        licenses {
+            license {
+                name 'The Apache Software License, Version 2.0'
+                url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                distribution 'repo'
             }
         }
         scm {

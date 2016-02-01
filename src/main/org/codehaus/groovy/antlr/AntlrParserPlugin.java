@@ -95,6 +95,7 @@ public class AntlrParserPlugin extends ASTHelper implements ParserPlugin, Groovy
 
     protected AST ast;
     private ClassNode classNode;
+    private MethodNode methodNode;
     private String[] tokenNames;
     private int innerClassCounter = 1;
     private boolean enumConstantBeingDef = false;
@@ -520,6 +521,7 @@ public class AntlrParserPlugin extends ASTHelper implements ParserPlugin, Groovy
             classNode = new InnerClassNode(outerClass, fullName, Opcodes.ACC_PUBLIC, ClassHelper.OBJECT_TYPE);
         }
         ((InnerClassNode) classNode).setAnonymous(true);
+        classNode.setEnclosingMethod(methodNode);
 
         assertNodeType(OBJBLOCK, node);
         objectBlock(node);
@@ -670,6 +672,7 @@ public class AntlrParserPlugin extends ASTHelper implements ParserPlugin, Groovy
         ClassNode oldNode = classNode;
         enumClass.addAnnotations(annotations);
         classNode = enumClass;
+        configureAST(classNode, enumNode);
         assertNodeType(OBJBLOCK, node);
         objectBlock(node);
         classNode = oldNode;
@@ -696,7 +699,7 @@ public class AntlrParserPlugin extends ASTHelper implements ParserPlugin, Groovy
                 // we have to handle an enum that defines a class for a constant
                 // for example the constant having overwriting a method. we need 
                 // to configure the inner class 
-                innerClass.setSuperClass(classNode);
+                innerClass.setSuperClass(classNode.getPlainNodeReference());
                 innerClass.setModifiers(classNode.getModifiers() | Opcodes.ACC_FINAL);
                 // we use a ClassExpression for transportation o EnumVisitor
                 init = new ClassExpression(innerClass);
@@ -729,6 +732,7 @@ public class AntlrParserPlugin extends ASTHelper implements ParserPlugin, Groovy
     }
 
     protected void methodDef(AST methodDef) {
+        MethodNode oldNode = methodNode;
         List<AnnotationNode> annotations = new ArrayList<AnnotationNode>();
         AST node = methodDef.getFirstChild();
 
@@ -788,6 +792,9 @@ public class AntlrParserPlugin extends ASTHelper implements ParserPlugin, Groovy
 
         boolean hasAnnotationDefault = false;
         Statement code = null;
+        boolean syntheticPublic = ((modifiers & Opcodes.ACC_SYNTHETIC) != 0);
+        modifiers &= ~Opcodes.ACC_SYNTHETIC;
+        methodNode = new MethodNode(name, modifiers, returnType, parameters, exceptions, code);
         if ((modifiers & Opcodes.ACC_ABSTRACT) == 0) {
             if (node == null) {
                 throw new ASTRuntimeException(methodDef, "You defined a method without body. Try adding a body, or declare it abstract.");
@@ -802,10 +809,7 @@ public class AntlrParserPlugin extends ASTHelper implements ParserPlugin, Groovy
                 throw new ASTRuntimeException(methodDef, "Abstract methods do not define a body.");
             }
         }
-
-        boolean syntheticPublic = ((modifiers & Opcodes.ACC_SYNTHETIC) != 0);
-        modifiers &= ~Opcodes.ACC_SYNTHETIC;
-        MethodNode methodNode = new MethodNode(name, modifiers, returnType, parameters, exceptions, code);
+        methodNode.setCode(code);
         methodNode.addAnnotations(annotations);
         methodNode.setGenericsTypes(generics);
         methodNode.setAnnotationDefault(hasAnnotationDefault);
@@ -817,6 +821,7 @@ public class AntlrParserPlugin extends ASTHelper implements ParserPlugin, Groovy
         } else {
             output.addMethod(methodNode);
         }
+        methodNode = oldNode;
     }
 
     private void checkNoInvalidModifier(AST node, String nodeType, int modifiers, int modifier, String modifierText) {
@@ -845,6 +850,10 @@ public class AntlrParserPlugin extends ASTHelper implements ParserPlugin, Groovy
         int modifiers = Opcodes.ACC_PUBLIC;
         if (isType(MODIFIERS, node)) {
             modifiers = modifiers(node, annotations, modifiers);
+            checkNoInvalidModifier(constructorDef, "Constructor", modifiers, Opcodes.ACC_STATIC, "static");
+            checkNoInvalidModifier(constructorDef, "Constructor", modifiers, Opcodes.ACC_FINAL, "final");
+            checkNoInvalidModifier(constructorDef, "Constructor", modifiers, Opcodes.ACC_ABSTRACT, "abstract");
+            checkNoInvalidModifier(constructorDef, "Constructor", modifiers, Opcodes.ACC_NATIVE, "native");
             node = node.getNextSibling();
         }
 
@@ -863,11 +872,14 @@ public class AntlrParserPlugin extends ASTHelper implements ParserPlugin, Groovy
         }
 
         assertNodeType(SLIST, node);
-        Statement code = statementList(node);
-
         boolean syntheticPublic = ((modifiers & Opcodes.ACC_SYNTHETIC) != 0);
         modifiers &= ~Opcodes.ACC_SYNTHETIC;
-        ConstructorNode constructorNode = classNode.addConstructor(modifiers, parameters, exceptions, code);
+        ConstructorNode constructorNode = classNode.addConstructor(modifiers, parameters, exceptions, null);
+        MethodNode oldMethod = methodNode;
+        methodNode = constructorNode;
+        Statement code = statementList(node);
+        methodNode = oldMethod;
+        constructorNode.setCode(code);
         constructorNode.setSyntheticPublic(syntheticPublic);
         constructorNode.addAnnotations(annotations);
         configureAST(constructorNode, constructorDef);
@@ -1203,10 +1215,8 @@ public class AntlrParserPlugin extends ASTHelper implements ParserPlugin, Groovy
                 statement = variableDef(node);
                 break;
 
-
             case LABELED_STAT:
-                statement = labelledStatement(node);
-                break;
+                return labelledStatement(node);
 
             case LITERAL_assert:
                 statement = assertStatement(node);
@@ -2034,7 +2044,7 @@ public class AntlrParserPlugin extends ASTHelper implements ParserPlugin, Groovy
     }
 
     protected Expression literalExpression(AST node, Object value) {
-        ConstantExpression constantExpression = new ConstantExpression(value);
+        ConstantExpression constantExpression = new ConstantExpression(value, value instanceof Boolean);
         configureAST(constantExpression, node);
         return constantExpression;
     }

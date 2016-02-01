@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2011 the original author or authors.
+ * Copyright 2003-2012 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import org.codehaus.groovy.reflection.stdclasses.CachedClosureClass;
 import org.codehaus.groovy.runtime.ComposedClosure;
 import org.codehaus.groovy.runtime.CurriedClosure;
 import org.codehaus.groovy.runtime.InvokerHelper;
+import org.codehaus.groovy.runtime.callsite.BooleanClosureWrapper;
 import org.codehaus.groovy.runtime.memoize.LRUCache;
 import org.codehaus.groovy.runtime.memoize.Memoize;
 import org.codehaus.groovy.runtime.memoize.UnlimitedConcurrentCache;
@@ -36,21 +37,21 @@ import java.io.Writer;
  * Groovy allows instances of Closures to be called in a
  * short form. For example:
  * <pre>
- *   def a = 1
- *   def c = {a}
- *   assert c() == 1
+ * def a = 1
+ * def c = { a }
+ * assert c() == 1
  * </pre>
  * To be able to use a Closure in this way with your own
  * subclass, you need to provide a doCall method with any
- * signature you want to. This ensures that 
- * {@link #getMaximumNumberOfParameters()} and 
- * {@link #getParameterTypes()} will work too without any 
+ * signature you want to. This ensures that
+ * {@link #getMaximumNumberOfParameters()} and
+ * {@link #getParameterTypes()} will work too without any
  * additional code. If no doCall method is provided a
  * closure must be used in its long form like
  * <pre>
- *   def a = 1
- *   def c = {a}
- *   assert c.call() == 1
+ * def a = 1
+ * def c = {a}
+ * assert c.call() == 1
  * </pre>
  *
  * @author <a href="mailto:james@coredevelopers.net">James Strachan</a>
@@ -69,28 +70,28 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
      *
      * For example the following code :
      * <pre>
-     *  class Test {
-     *    def x = 30
-     *    def y = 40
+     * class Test {
+     *     def x = 30
+     *     def y = 40
      *
-     *    def run() {
-     *        def data = [ x: 10, y: 20 ]
-     *        def cl = { y = x + y }
-     *        cl.delegate = data
-     *        cl()
-     *        println x
-     *        println y
-     *        println data
-     *    }
-     *  }
+     *     def run() {
+     *         def data = [ x: 10, y: 20 ]
+     *         def cl = { y = x + y }
+     *         cl.delegate = data
+     *         cl()
+     *         println x
+     *         println y
+     *         println data
+     *     }
+     * }
      *
-     *  new Test().run()
+     * new Test().run()
      * </pre>
      * will output :
      * <pre>
-     *     30
-     *     70
-     *     [x:10, y:20]
+     * 30
+     * 70
+     * [x:10, y:20]
      * </pre>
      * because the x and y fields declared in the Test class the variables in the delegate.<p>
      * <i>Note that local variables are always looked up first, independently of the resolution strategy.</i>
@@ -103,29 +104,29 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
      *
      * For example the following code :
      * <pre>
-     *  class Test {
-     *    def x = 30
-     *    def y = 40
+     * class Test {
+     *     def x = 30
+     *     def y = 40
      *
-     *    def run() {
-     *        def data = [ x: 10, y: 20 ]
-     *        def cl = { y = x + y }
-     *        cl.delegate = data
-     *        cl.resolveStrategy = Closure.DELEGATE_FIRST
-     *        cl()
-     *        println x
-     *        println y
-     *        println data
-     *    }
-     *  }
+     *     def run() {
+     *         def data = [ x: 10, y: 20 ]
+     *         def cl = { y = x + y }
+     *         cl.delegate = data
+     *         cl.resolveStrategy = Closure.DELEGATE_FIRST
+     *         cl()
+     *         println x
+     *         println y
+     *         println data
+     *     }
+     * }
      *
-     *  new Test().run()
+     * new Test().run()
      * </pre>
      * will output :
      * <pre>
-     *     30
-     *     40
-     *     [x:10, y:30]
+     * 30
+     * 40
+     * [x:10, y:30]
      * </pre>
      * because the x and y variables declared in the delegate shadow the fields in the owner class.<p>
      * <i>Note that local variables are always looked up first, independently of the resolution strategy.</i>
@@ -137,23 +138,23 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
      * and not call the delegate at all. For example the following code :
      *
      * <pre>
-     *  class Test {
-     *    def x = 30
-     *    def y = 40
+     * class Test {
+     *     def x = 30
+     *     def y = 40
      *
-     *    def run() {
-     *        def data = [ x: 10, y: 20, z: 30 ]
-     *        def cl = { y = x + y }
-     *        cl.delegate = data
-     *        cl.resolveStrategy = Closure.OWNER_ONLY
-     *        cl()
-     *        println x
-     *        println y
-     *        println data
-     *    }
-     *  }
+     *     def run() {
+     *         def data = [ x: 10, y: 20, z: 30 ]
+     *         def cl = { y = x + y + z }
+     *         cl.delegate = data
+     *         cl.resolveStrategy = Closure.OWNER_ONLY
+     *         cl()
+     *         println x
+     *         println y
+     *         println data
+     *     }
+     * }
      *
-     *  new Test().run()
+     * new Test().run()
      * </pre>
      *
      * will throw "No such property: z" error because even if the z variable is declared in the delegate, no
@@ -167,24 +168,24 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
      * only and entirely bypass the owner. For example the following code :
      *
      * <pre>
-     *  class Test {
-     *    def x = 30
-     *    def y = 40
-     *    def z = 50
+     * class Test {
+     *     def x = 30
+     *     def y = 40
+     *     def z = 50
      *
-     *    def run() {
-     *        def data = [ x: 10, y: 20 ]
-     *        def cl = { y = x + y + z}
-     *        cl.delegate = data
-     *        cl.resolveStrategy = Closure.DELEGATE_ONLY
-     *        cl()
-     *        println x
-     *        println y
-     *        println data
-     *    }
-     *  }
+     *     def run() {
+     *         def data = [ x: 10, y: 20 ]
+     *         def cl = { y = x + y + z }
+     *         cl.delegate = data
+     *         cl.resolveStrategy = Closure.DELEGATE_ONLY
+     *         cl()
+     *         println x
+     *         println y
+     *         println data
+     *     }
+     * }
      *
-     *  new Test().run()
+     * new Test().run()
      * </pre>
      *
      * will throw an error because even if the owner declares a "z" field, the resolution strategy will bypass
@@ -209,7 +210,7 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
             return args;
         }
     };
-    
+
     private Object delegate;
     private Object owner;
     private Object thisObject;
@@ -218,6 +219,7 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
     protected Class[] parameterTypes;
     protected int maximumNumberOfParameters;
     private static final long serialVersionUID = 4368710879820278874L;
+    private BooleanClosureWrapper bcw;
 
     public Closure(Object owner, Object thisObject) {
         this.owner = owner;
@@ -258,7 +260,7 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
      * Gets the strategy which the closure users to resolve methods and properties
      *
      * @return The resolve strategy
-     * 
+     *
      * @see groovy.lang.Closure#DELEGATE_FIRST
      * @see groovy.lang.Closure#DELEGATE_ONLY
      * @see groovy.lang.Closure#OWNER_FIRST
@@ -391,7 +393,10 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
     }
 
     public boolean isCase(Object candidate){
-        return DefaultTypeTransformation.castToBoolean(call(candidate));
+        if (bcw==null) {
+            bcw = new BooleanClosureWrapper(this);
+        }
+        return bcw.call(candidate);
     }
 
     /**
@@ -422,7 +427,7 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
     public V call(final Object arguments) {
         return call(new Object[]{arguments});
     }
-    
+
     protected static Object throwRuntimeException(Throwable throwable) {
         if (throwable instanceof RuntimeException) {
             throw (RuntimeException) throwable;
@@ -455,7 +460,7 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
     public void setDelegate(Object delegate) {
         this.delegate = delegate;
     }
-    
+
     /**
      * @return the parameter types of the longest doCall method
      * of this closure
@@ -473,8 +478,8 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
     }
 
     /**
-     * @return a version of this closure which implements Writable.  Note that 
-     * the returned Writable also overrides {@link #toString()} in order 
+     * @return a version of this closure which implements Writable.  Note that
+     * the returned Writable also overrides {@link #toString()} in order
      * to allow rendering the result directly to a String.
      */
     public Closure asWritable() {
@@ -518,13 +523,24 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
      * assert e() == 10
      * assert e(5) == 15
      * </pre>
-     * 
+     *
      *
      * @param arguments the arguments to bind
      * @return the new closure with its arguments bound
      */
     public Closure<V> curry(final Object... arguments) {
         return new CurriedClosure<V>(this, arguments);
+    }
+
+    /**
+     * Support for Closure currying.
+     *
+     * @param argument the argument to bind
+     * @return the new closure with the argument bound
+     * @see #curry(Object...)
+     */
+    public Closure<V> curry(final Object argument) {
+        return curry(new Object[]{argument});
     }
 
     /**
@@ -543,6 +559,17 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
      */
     public Closure<V> rcurry(final Object... arguments) {
         return new CurriedClosure<V>(-arguments.length, this, arguments);
+    }
+
+    /**
+     * Support for Closure "right" currying.
+     *
+     * @param argument the argument to bind
+     * @return the new closure with the argument bound
+     * @see #rcurry(Object...)
+     */
+    public Closure<V> rcurry(final Object argument) {
+        return rcurry(new Object[]{argument});
     }
 
     /**
@@ -577,6 +604,17 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
      */
     public Closure<V> ncurry(int n, final Object... arguments) {
         return new CurriedClosure<V>(n, this, arguments);
+    }
+
+    /**
+     * Support for Closure currying at a given index.
+     *
+     * @param argument the argument to bind
+     * @return the new closure with the argument bound
+     * @see #ncurry(int, Object...)
+     */
+    public Closure<V> ncurry(int n, final Object argument) {
+        return ncurry(n, new Object[]{argument});
     }
 
     /**
@@ -770,7 +808,7 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
     public Closure<V> trampoline() {
         return new TrampolineClosure<V>(this);
     }
-    
+
     /* (non-Javadoc)
      * @see java.lang.Object#clone()
      */
@@ -781,15 +819,15 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
             return null;
         }
     }
-    
+
     /*
-     * Implementation note: 
+     * Implementation note:
      *   This has to be an inner class!
-     * 
-     * Reason: 
+     *
+     * Reason:
      *   Closure.this.call will call the outer call method, but
      * with the inner class as executing object. This means any
-     * invokeMethod or getProperty call will be called on this 
+     * invokeMethod or getProperty call will be called on this
      * inner class instead of the outer!
      */
     private class WritableClosure extends Closure implements Writable {
@@ -848,7 +886,7 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
         public Object call(Object arguments) {
             return ((Closure) getOwner()).call(arguments);
         }
-        
+
         public Object call(Object... args) {
             return ((Closure) getOwner()).call(args);
         }
@@ -856,7 +894,7 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
         public Object doCall(Object... args) {
             return call(args);
         }
-        
+
         /* (non-Javadoc)
          * @see groovy.lang.Closure#getDelegate()
          */
@@ -877,7 +915,7 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
         public Class[] getParameterTypes() {
             return Closure.this.getParameterTypes();
         }
-        
+
         /* (non-Javadoc)
          * @see groovy.lang.Closure#getParameterTypes()
          */
@@ -934,7 +972,7 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
 
             return writer.toString();
         }
-        
+
         public Closure curry(final Object... arguments) {
             return (new CurriedClosure(this, arguments)).asWritable();
         }
@@ -942,7 +980,7 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
         public void setResolveStrategy(int resolveStrategy) {
             Closure.this.setResolveStrategy(resolveStrategy);
         }
-        
+
         public int getResolveStrategy() {
             return Closure.this.getResolveStrategy();
         }
@@ -962,4 +1000,41 @@ public abstract class Closure<V> extends GroovyObjectSupport implements Cloneabl
         this.directive = directive;
     }
 
+    /**
+     * Returns a copy of this closure where the "owner", "delegate" and "thisObject"
+     * fields are null, allowing proper serialization when one of them is not serializable.
+     *
+     * @return a serializable closure.
+     *
+     * @since 1.8.5
+     */
+    @SuppressWarnings("unchecked")
+    public Closure<V> dehydrate() {
+        Closure<V> result = (Closure<V>) this.clone();
+        result.delegate = null;
+        result.owner = null;
+        result.thisObject = null;
+        return result;
+    }
+
+    /**
+     * Returns a copy of this closure for which the delegate, owner and thisObject are
+     * replaced with the supplied parameters. Use this when you want to rehydrate a
+     * closure which has been made serializable thanks to the {@link #dehydrate()}
+     * method.
+     * @param delegate the closure delegate
+     * @param owner the closure owner
+     * @param thisObject the closure "this" object
+     * @return a copy of this closure where owner, delegate and thisObject are replaced
+     *
+     * @since 1.8.5
+     */
+    @SuppressWarnings("unchecked")
+    public Closure<V> rehydrate(Object delegate, Object owner, Object thisObject) {
+        Closure<V> result = (Closure<V>) this.clone();
+        result.delegate = delegate;
+        result.owner = owner;
+        result.thisObject = thisObject;
+        return result;
+    }
 }

@@ -16,15 +16,33 @@
 package groovy.json
 
 import static JsonTokenType.*
+import java.text.SimpleDateFormat
+import java.text.DateFormat
+import org.codehaus.groovy.runtime.DefaultGroovyMethods
 
 /**
  * Class responsible for the actual String serialization of the possible values of a JSON structure.
  * This class can also be used as a category, so as to add <code>toJson()</code> methods to various types.
  *
  * @author Guillaume Laforge
+ * @author Roshan Dawrani
  * @since 1.8.0
  */
 class JsonOutput {
+
+    /**
+     * Date formatter for outputting dates to a string
+     * that can be parsed back from JavaScript with:
+     * <code>Date.parse(stringRepresentation)</code>
+     */
+    private static final ThreadLocal<SimpleDateFormat> dateFormatter = new ThreadLocal<SimpleDateFormat>() {
+        @Override
+        protected SimpleDateFormat initialValue() {
+            DateFormat formatter = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US)
+            formatter.timeZone = TimeZone.getTimeZone('GMT')
+            formatter
+        }
+    }
 
     /**
      * @return "true" or "false" for a boolean value
@@ -55,50 +73,41 @@ class JsonOutput {
      * @return a properly encoded string with escape sequences
      */
     static String toJson(String s) {
-        if (!s) {
-            '""'
-        } else {
-            def result = new StringBuilder('"')
+        "\"${StringEscapeUtils.escapeJava(s)}\""
+    }
 
-            s.each { c ->
-                switch (c) {
-                    case '"':
-                        result.append('\\"')
-                        break
-                    case '\\':
-                        result.append('\\\\')
-                        break
-                    case '/':
-                        result.append('\\/')
-                        break
-                    case '\b':
-                        result.append('\\b')
-                        break
-                    case '\f':
-                        result.append('\\f')
-                        break
-                    case '\n':
-                        result.append('\\n')
-                        break
-                    case '\r':
-                        result.append('\\r')
-                        break
-                    case '\t':
-                        result.append('\\t')
-                        break
-                    default:
-                        // control chars below space
-                        if (c < ' ') {
-                            result.append('\\u' + Integer.toHexString((int)c).padLeft(4, '0'))
-                        } else {
-                            result.append(c)
-                        }
-                }
-            }
+    /**
+     * Format a date that is parseable from JavaScript, according to ISO-8601.
+     *
+     * @param date the date to format to a JSON string
+     * @return a formatted date in the form of a string
+     */
+    static String toJson(Date date) {
+        "\"${dateFormatter.get().format(date)}\""
+    }
 
-            result.append('"')
-            result.toString()
-        }
+    /**
+     * Format a calendar instance that is parseable from JavaScript, according to ISO-8601.
+     *
+     * @param cal the calendar to format to a JSON string
+     * @return a formatted date in the form of a string
+     */
+    static String toJson(Calendar cal) {
+        "\"${dateFormatter.get().format(cal.time)}\""
+    }
+
+    /**
+     * @return the string representation of an uuid
+     */
+    static String toJson(UUID uuid) {
+        "\"${uuid.toString()}\""
+    }
+
+    /**
+     * @return the string representation of the URL
+     */
+    static String toJson(URL url) {
+        "\"${url.toString()}\""
     }
 
     /**
@@ -122,7 +131,7 @@ class JsonOutput {
         } else if (object instanceof Enum) {
             '"' + object.name() + '"'
         } else {
-            def properties = object.properties
+            def properties = DefaultGroovyMethods.getProperties(object)
             properties.remove('class')
             properties.remove('declaringClass')
             properties.remove('metaClass')
@@ -134,7 +143,12 @@ class JsonOutput {
      * @return a JSON object representation for a map
      */
     static String toJson(Map m) {
-        "{" + m.collect { k, v -> toJson(k.toString()) + ':' + toJson(v) }.join(',') + "}"
+        "{" + m.collect { k, v ->
+                if (k == null) {
+                    throw new IllegalArgumentException('Maps with null keys can\'t be converted to JSON')
+                }
+                toJson(k.toString()) + ':' + toJson(v)
+        }.join(',') + "}"
     }
 
     /**
@@ -173,6 +187,8 @@ class JsonOutput {
                 output.append(' ' * indent)
             } else if (token.type == COLON) {
                 output.append(': ')
+            } else if (token.type == STRING) {
+                output.append('"' + StringEscapeUtils.escapeJava(token.text[1..-2]) + '"')
             } else {
                 output.append(token.text)
             }

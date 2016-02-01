@@ -1,5 +1,7 @@
 package org.codehaus.groovy.classgen.asm
 
+import org.objectweb.asm.MethodVisitor;
+
 
 /**
  * @author Jochen Theodorou
@@ -18,38 +20,38 @@ class MethodPatternsTest extends AbstractBytecodeTestCase {
             ''').hasSequence([
                 // if (x==0) return y+1
                 'ILOAD 1',
-                'LDC 0',
+                'ICONST_0',
                 'IF_ICMPNE',
                 'ICONST_1',
                 'ICONST_0',
                 'IFEQ',     // x==0 and branching till here
                 'ILOAD 2',
-                'LDC 1',
+                'ICONST_1',
                 'IADD',     // y+1
                 'IRETURN',  // return
                 // if (y==0) return A(x-1,1)
                 'ILOAD 2',
-                'LDC 0',
+                'ICONST_0',
                 'IF_ICMPNE',
                 'ICONST_1',
                 'ICONST_0',
                 'IFEQ',     // y==0 and branching till here
                 'ALOAD 0',
                 'ILOAD 1',
-                'LDC 1',
+                'ICONST_1',
                 'ISUB',     // x-1 argument
-                'LDC 1',
+                'ICONST_1',
                 'INVOKEVIRTUAL script.A (II)I', // A(x-1,1)
                 'IRETURN',  //return
                 // return A(x-1,A(x,y-1))
                 'ALOAD 0',
                 'ILOAD 1',
-                'LDC 1',
+                'ICONST_1',
                 'ISUB',     // outer A x-1 argument
                 'ALOAD 0',
                 'ILOAD 1',  // inner A x argument
                 'ILOAD 2',
-                'LDC 1',
+                'ICONST_1',
                 'ISUB',     //inner A y-1 argument
                 'INVOKEVIRTUAL script.A (II)I', // inner A
                 'INVOKEVIRTUAL script.A (II)I', // outer A
@@ -71,7 +73,7 @@ class MethodPatternsTest extends AbstractBytecodeTestCase {
             'ICONST_0',
             'IFEQ',
             'ILOAD',
-            'LDC',
+            'ICONST_1',
             'IADD',
             'ISTORE',
             'ALOAD',
@@ -79,17 +81,70 @@ class MethodPatternsTest extends AbstractBytecodeTestCase {
             'ILOAD',
             'INVOKESTATIC org/codehaus/groovy/runtime/BytecodeInterface8.intArraySet ([III)V',
             'ILOAD',
+            'POP',
+            'ILOAD',
             'DUP',
             'ISTORE',
             'ICONST_1',
             'IADD',
             'DUP',
-            'ISTORE 11',
+            'ISTORE',
             'POP',
-            'GOTO'
+            'ILOAD',
+            'POP',
+            'GOTO',
         ])
     }
-    
+
+    void testArrayIncrement() {
+        assert compile('''
+            int n = 10
+            int[] x = new int[n]
+            for (int i = 0; i < n; i++) x[i]++
+        ''').hasSequence([
+            'ICONST_0',
+            'ISTORE',
+            'ILOAD',
+            'POP',
+            'ILOAD',
+            'ILOAD',
+            'IF_ICMPGE',
+            'ICONST_1',
+            'GOTO',
+            'ICONST_0',
+            'IFEQ',
+            'ILOAD',
+            'ISTORE',
+            'ALOAD',
+            'ILOAD',
+            'INVOKESTATIC org/codehaus/groovy/runtime/BytecodeInterface8.intArrayGet ([II)I',
+            'DUP',
+            'ISTORE',
+            'ICONST_1',
+            'IADD',
+            'ISTORE',
+            'ALOAD',
+            'ILOAD',
+            'ILOAD',
+            'INVOKESTATIC org/codehaus/groovy/runtime/BytecodeInterface8.intArraySet ([III)V',
+            'ILOAD',
+            'POP',
+            'ILOAD',
+            'POP',
+            'ILOAD',
+            'DUP',
+            'ISTORE',
+            'ICONST_1',
+            'IADD',
+            'DUP',
+            'ISTORE',
+            'POP',
+            'ILOAD',
+            'POP',
+            'GOTO',
+        ])
+    }
+
     void testForLoopSettingArrayWithOperatorUsedInAssignmentAndArrayRHS() {
         assert compile('''
             int n = 10
@@ -129,7 +184,7 @@ class MethodPatternsTest extends AbstractBytecodeTestCase {
         ])
     }
     
-    void testRoghtShiftUnsignedWithLongArgument() {
+    void testRightShiftUnsignedWithLongArgument() {
         assert compile(method:"hashCode", '''
             class X{
                 long _tagReservationDate
@@ -150,11 +205,143 @@ class MethodPatternsTest extends AbstractBytecodeTestCase {
             'GETFIELD X._tagReservationDate : J',
             'ALOAD 0',
             'GETFIELD X._tagReservationDate : J',
-            'LDC 32',
+            'BIPUSH 32',
             'LUSHR',
             'LXOR',
             'L2I',
             'IADD',
+        ])
+    }
+    
+    void testObjectArraySet() {
+        assert compile(method:"foo", '''
+            class X{
+              void foo() {
+                X[] xa = new X[1]
+                xa[0] = new X()
+              }
+            }
+        ''').hasSequence ([
+            'ICONST_0',
+            'INVOKESTATIC org/codehaus/groovy/runtime/BytecodeInterface8.objectArraySet ([Ljava/lang/Object;ILjava/lang/Object;)V',
+        ])
+    }
+    
+    void testBooleanArraySet() {
+        assert compile(method:"foo", '''
+            class X{
+              void foo() {
+                boolean[] xa = new boolean[1]
+                xa[0] = false
+              }
+            }
+        ''').hasSequence ([
+            'ICONST_0',
+            'INVOKESTATIC org/codehaus/groovy/runtime/BytecodeInterface8.zArraySet ([ZIZ)V',
+        ])
+    }
+    
+    void testArray() {
+        def methods = [
+            "short"     :   [1, "sArraySet ([SIS)V", "sArrayGet ([SI)S"], 
+            "int"       :   [1, "intArraySet ([III)V", "intArrayGet ([II)I"],
+            "boolean"   :   [false, "zArraySet ([ZIZ)V", "zArrayGet ([ZI)Z"],
+            "long"      :   [1l, "lArraySet ([JIJ)V","lArrayGet ([JI)J"],
+            "float"     :   [1f, "fArraySet ([FIF)V", "fArrayGet ([FI)F"],
+            "byte"      :   [1, "bArraySet ([BIB)V", "bArrayGet ([BI)B"],
+            "char"      :   [1, "cArraySet ([CIC)V", "cArrayGet ([CI)C"],
+            "double"    :   [1d, "dArraySet ([DID)V", "dArrayGet ([DI)D"]
+        ]
+        methods.each {
+            assert compile(method:"foo", """
+                class X{
+                  void foo() {
+                    ${it.key}[] xa = new ${it.key}[1]
+                    xa[0] = ${it.value[0]}
+                  }
+                }
+            """).hasSequence ([
+                'ICONST_0',
+                "INVOKESTATIC org/codehaus/groovy/runtime/BytecodeInterface8."+it.value[1],
+            ])
+            
+            assert compile(method:"foo", """
+                class X{
+                  ${it.key} foo() {
+                    ${it.key}[] xa = new ${it.key}[1]
+                    xa[0]
+                  }
+                }
+            """).hasSequence ([
+                'ICONST_0',
+                "INVOKESTATIC org/codehaus/groovy/runtime/BytecodeInterface8.${it.value[2]}",
+            ])
+        }
+        
+        assertScript """
+            a=[3:5]
+            class B {
+                int v;
+            }
+            B b = new B();
+            b.v = 3
+            
+            clos = {
+                if (it!=null) {
+                    a[it.v] += 3
+                }
+            }
+            clos.call(b)
+            assert b.v == 3
+            assert a[3] == 8        
+        """
+    }
+    
+    void testFib() {
+        assert compile(method:"fib", """
+          int fib(int i) {
+              i < 2 ? 1 : fib(i - 2) + fib(i - 1)
+          }
+      """).hasSequence ([
+          'ILOAD 1',
+          'ICONST_2',
+          'IF_ICMPGE',
+          'ICONST_1',
+          'GOTO',
+          'ICONST_0',
+          'IFEQ',
+          'ICONST_1',
+          'GOTO',
+          'ALOAD 0',
+          'ILOAD 1',
+          'ICONST_2',
+          'ISUB',
+          'INVOKEVIRTUAL script.fib (I)I',
+          'ALOAD 0',
+          'ILOAD 1',
+          'ICONST_1',
+          'ISUB',
+          'INVOKEVIRTUAL script.fib (I)I',
+          'IADD',
+          'IRETURN'
+      ])
+    }
+    
+    void testNoBoxUnbox() {
+        assert compile(method:"someCode", """
+            public boolean someCall() {
+                return true;
+            }
+            
+            public boolean someCode() {
+                boolean val = someCall()
+            }        
+        """).hasSequence([
+            'ALOAD',
+            'INVOKEVIRTUAL script.someCall ()Z',
+            'ISTORE',
+            'ILOAD',
+            'IRETURN',
         ])
     }
 }

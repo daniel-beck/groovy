@@ -240,7 +240,7 @@ public class GroovyClassLoader extends URLClassLoader {
         scriptNameCounter++;
         return "script" + scriptNameCounter + ".groovy";
     }
-
+    
     /**
      * @deprecated Prefer using methods taking a Reader rather than an InputStream to avoid wrong encoding issues.
      */
@@ -275,17 +275,13 @@ public class GroovyClassLoader extends URLClassLoader {
      * @return the main class defined in the given script
      */
     public Class parseClass(GroovyCodeSource codeSource, boolean shouldCacheSource) throws CompilationFailedException {
-        Class answer;
         synchronized (sourceCache) {
-            answer = sourceCache.get(codeSource.getName());
+            Class answer = sourceCache.get(codeSource.getName());
             if (answer != null) return answer;
-            if (shouldCacheSource) {
-                answer = doParseClass(codeSource);
-                sourceCache.put(codeSource.getName(), answer);
-            }
+            answer = doParseClass(codeSource);
+            if (shouldCacheSource) sourceCache.put(codeSource.getName(), answer);
+            return answer;
         }
-        if (!shouldCacheSource) answer = doParseClass(codeSource);
-        return answer;
     }
 
     private Class doParseClass(GroovyCodeSource codeSource) {
@@ -773,14 +769,27 @@ public class GroovyClassLoader extends URLClassLoader {
             // found a source, compile it if newer
             if ((oldClass != null && isSourceNewer(source, oldClass)) || (oldClass == null)) {
                 synchronized (sourceCache) {
-                    sourceCache.remove(className);
-                    return parseClass(source.openStream(), className);
+                    String name = source.toExternalForm();
+                    sourceCache.remove(name);
+                    if (isFile(source)) {
+                        try {
+                            return parseClass(new GroovyCodeSource(new File(source.toURI()), config.getSourceEncoding()));
+                        } catch (URISyntaxException e) {
+                          // do nothing and fall back to the other version
+                        }
+                    } 
+                    return parseClass(source.openStream(), name);
                 }
             }
         }
         return oldClass;
     }
-    
+
+    @Override
+    public Class<?> loadClass(String name) throws ClassNotFoundException {
+        return loadClass(name, false);
+    }
+
     /**
      * Implemented here to check package access prior to returning an
      * already loaded class.
@@ -841,7 +850,14 @@ public class GroovyClassLoader extends URLClassLoader {
     }
 
     private File fileReallyExists(URL ret, String fileWithoutPackage) {
-        File path = new File(decodeFileName(ret.getFile())).getParentFile();
+        File path;
+        try {
+            /* fix for GROOVY-5809 */ 
+            path = new File(ret.toURI());
+        } catch(URISyntaxException e) {
+            path = new File(decodeFileName(ret.getFile()));
+        }
+        path = path.getParentFile();
         if (path.exists() && path.isDirectory()) {
             File file = new File(path, fileWithoutPackage);
             if (file.exists()) {

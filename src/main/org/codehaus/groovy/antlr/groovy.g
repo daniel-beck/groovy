@@ -415,7 +415,7 @@ tokens {
     }
     
     private void dumpTree(AST ast, String offset) {
-    	dump(ast, offset);
+        dump(ast, offset);
         for (AST node = ast.getFirstChild(); node != null; node = node.getNextSibling()) {
             dumpTree(node, offset+"\t");
         }
@@ -2035,7 +2035,7 @@ expressionStatement[int prevToken]
     ;
 
 expressionStatementNoCheck
-        { boolean isPathExpr = false; }
+        { boolean isPathExpr = true; }
     :
         // Checks are now out of the way; here's the real rule:
         head:expression[LC_STMT]
@@ -2189,7 +2189,7 @@ handler {Token first = LT(1);}
  */
 commandArguments[AST head]
 {
-	Token first = LT(1);
+    Token first = LT(1);
 }
     :
         commandArgument ( options {greedy=true;}: COMMA! nls! commandArgument )*
@@ -2210,13 +2210,12 @@ commandArguments[AST head]
 
 commandArgumentsGreedy[AST head]
 { 
-	AST prev = null;
+    AST prev = #head;
 }
     :
-        { #prev = #head; }
-        
+       
         // argument to the already existing method name
-        (   ({#prev.getType()!=METHOD_CALL}? commandArgument)=> (   
+        (   ({#prev==null || #prev.getType()!=METHOD_CALL}? commandArgument)=> (   
                 first : commandArguments[head]!
                 { #prev = #first; }
             )

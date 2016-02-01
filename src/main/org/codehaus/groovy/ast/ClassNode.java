@@ -33,8 +33,6 @@ import org.objectweb.asm.Opcodes;
 import java.lang.reflect.Array;
 import java.util.*;
 
-import groovy.lang.GroovyObject;
-
 /**
  * Represents a class in the AST.<br/>
  * A ClassNode should be created using the methods in ClassHelper.
@@ -665,6 +663,7 @@ public class ClassNode extends AnnotatedNode implements Opcodes {
         for (ClassNode existing : interfaces) {
             if (type.equals(existing)) {
                 skip = true;
+                break;
             }
         }
         if (!skip) {
@@ -694,6 +693,7 @@ public class ClassNode extends AnnotatedNode implements Opcodes {
         for (MixinNode existing : mixins) {
             if (mixin.equals(existing)) {
                 skip = true;
+                break;
             }
         }
         if (!skip) {
@@ -1305,6 +1305,13 @@ public class ClassNode extends AnnotatedNode implements Opcodes {
         return componentType;
     }
 
+    /**
+     * Returns the concrete class this classnode relates to. However, this method
+     * is inherently unsafe as it may return null depending on the compile phase you are
+     * using. AST transformations should never use this method directly, but rather obtain
+     * a new class node using {@link #getPlainNodeReference()}.
+     * @return the class this classnode relates to. May return null.
+     */
     public Class getTypeClass(){
         Class c = redirect().clazz;
         if (c!=null) return c;
@@ -1363,7 +1370,7 @@ public class ClassNode extends AnnotatedNode implements Opcodes {
         if (ClassHelper.isPrimitiveType(this)) return this;
         ClassNode n = new ClassNode(getName(),getModifiers(),getSuperClass(),null,null);
         n.isPrimaryNode = false;
-        n.setRedirect(this.redirect);
+        n.setRedirect(redirect());
         n.componentType = redirect().getComponentType();
         return n;
     }
@@ -1436,5 +1443,9 @@ public class ClassNode extends AnnotatedNode implements Opcodes {
             }
         }
         return transformInstances;
+    }
+    
+    public boolean isRedirectNode() {
+        return redirect!=null;
     }
 }

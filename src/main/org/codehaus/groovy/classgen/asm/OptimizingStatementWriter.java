@@ -16,6 +16,7 @@
 package org.codehaus.groovy.classgen.asm;
 
 import java.util.LinkedList;
+import java.util.List;
 
 import org.codehaus.groovy.ast.*;
 import org.codehaus.groovy.ast.expr.*;
@@ -70,13 +71,15 @@ public class OptimizingStatementWriter extends StatementWriter {
     }
 
     private static MethodCaller[] guards = {
+        null,
         MethodCaller.newStatic(BytecodeInterface8.class, "isOrigInt"),
-        MethodCaller.newStatic(BytecodeInterface8.class, "isOrigZ"),
+        MethodCaller.newStatic(BytecodeInterface8.class, "isOrigL"),
         MethodCaller.newStatic(BytecodeInterface8.class, "isOrigD"),
         MethodCaller.newStatic(BytecodeInterface8.class, "isOrigC"),
         MethodCaller.newStatic(BytecodeInterface8.class, "isOrigB"),
         MethodCaller.newStatic(BytecodeInterface8.class, "isOrigS"),
         MethodCaller.newStatic(BytecodeInterface8.class, "isOrigF"),
+        MethodCaller.newStatic(BytecodeInterface8.class, "isOrigZ"),
     };
     
     private static final MethodCaller disabledStandardMetaClass = MethodCaller.newStatic(BytecodeInterface8.class, "disabledStandardMetaClass");
@@ -391,9 +394,9 @@ public class OptimizingStatementWriter extends StatementWriter {
         return true;
     }
     
-    public static void setNodeMeta(ClassNode classNode) {
+    public static void setNodeMeta(TypeChooser chooser, ClassNode classNode) {
         if (classNode.getNodeMetaData(ClassNodeSkip.class)!=null) return;
-        new OptVisitor().visitClass(classNode);   
+        new OptVisitor(chooser).visitClass(classNode);
     }
     
     private static StatementMeta addMeta(ASTNode node) {
@@ -484,6 +487,12 @@ public class OptimizingStatementWriter extends StatementWriter {
     }
     
     private static class OptVisitor extends ClassCodeVisitorSupport {
+        private final TypeChooser typeChooser;
+
+        public OptVisitor(final TypeChooser chooser) {
+            this.typeChooser = chooser;
+        }
+
         @Override protected SourceUnit getSourceUnit() {return null;}
 
         private ClassNode node;
@@ -548,7 +557,7 @@ public class OptimizingStatementWriter extends StatementWriter {
         }
         
         private void addTypeInformation(Expression expression, Expression orig) {
-            ClassNode type = getType(expression,node);
+            ClassNode type = typeChooser.resolveType(expression, node);
             if (isPrimitiveType(type)) {
                 StatementMeta meta = addMeta(orig);
                 meta.type = type;
@@ -574,8 +583,8 @@ public class OptimizingStatementWriter extends StatementWriter {
             Expression right = expression.getRightExpression();
             right.visit(this);
             
-            ClassNode leftType = getType(expression.getLeftExpression(),node);
-            ClassNode rightType = getType(expression.getRightExpression(),node);
+            ClassNode leftType = typeChooser.resolveType(expression.getLeftExpression(), node);
+            ClassNode rightType = typeChooser.resolveType(expression.getRightExpression(), node);
             if (isPrimitiveType(leftType) && isPrimitiveType(rightType)) {
                 // if right is a constant, then we optimize only if it makes
                 // a block complete, so we set a maybe
@@ -585,7 +594,8 @@ public class OptimizingStatementWriter extends StatementWriter {
                     opt.chainShouldOptimize(true);
                 }
                 StatementMeta meta = addMeta(expression);
-                meta.type = leftType;
+                ClassNode declarationType = typeChooser.resolveType(expression, node);
+                meta.type = declarationType!=null?declarationType:leftType;
                 opt.chainInvolvedType(leftType);
                 opt.chainInvolvedType(rightType);
             }
@@ -596,8 +606,8 @@ public class OptimizingStatementWriter extends StatementWriter {
             if (expression.getNodeMetaData(StatementMeta.class)!=null) return;
             super.visitBinaryExpression(expression);
             
-            ClassNode leftType = getType(expression.getLeftExpression(),node);
-            ClassNode rightType = getType(expression.getRightExpression(),node);
+            ClassNode leftType = typeChooser.resolveType(expression.getLeftExpression(), node);
+            ClassNode rightType = typeChooser.resolveType(expression.getRightExpression(), node);
             ClassNode resultType = null;
             int operation = expression.getOperation().getType();
             
@@ -620,10 +630,10 @@ public class OptimizingStatementWriter extends StatementWriter {
                     case Types.DIVIDE: case Types.DIVIDE_EQUAL:
                         if (isLongCategory(leftType) && isLongCategory(rightType)) {
                             resultType = BigDecimal_TYPE;
-                        } else if (isDoubleCategory(leftType) && isDoubleCategory(rightType)) {
-                            resultType = double_TYPE;
                         } else if (isBigDecCategory(leftType) && isBigDecCategory(rightType)) {
                             resultType = BigDecimal_TYPE;
+                        } else if (isDoubleCategory(leftType) && isDoubleCategory(rightType)) {
+                            resultType = double_TYPE;
                         }
                         break;
                     case Types.POWER: case Types.POWER_EQUAL:
@@ -637,6 +647,8 @@ public class OptimizingStatementWriter extends StatementWriter {
                             resultType = int_TYPE;
                         } else if (isLongCategory(leftType) && isLongCategory(rightType)) {
                             resultType = long_TYPE;
+                        } else if (isBigDecCategory(leftType) && isBigDecCategory(rightType)) {
+                            resultType = BigDecimal_TYPE;
                         } else if (isDoubleCategory(leftType) && isDoubleCategory(rightType)) {
                             resultType = double_TYPE;
                         }
@@ -695,7 +707,7 @@ public class OptimizingStatementWriter extends StatementWriter {
             if (expression.getNodeMetaData(StatementMeta.class)!=null) return;
             super.visitStaticMethodCallExpression(expression);
 
-            setMethodTarget(expression,expression.getMethod(), expression.getArguments());
+            setMethodTarget(expression,expression.getMethod(), expression.getArguments(), true);
         }
         
         @Override
@@ -711,10 +723,20 @@ public class OptimizingStatementWriter extends StatementWriter {
             }
             
             if (!setTarget) return;
-            setMethodTarget(expression, expression.getMethodAsString(), expression.getArguments());
+            setMethodTarget(expression, expression.getMethodAsString(), expression.getArguments(), true);
         }
         
-        private void setMethodTarget(Expression expression, String name, Expression callArgs) {
+        @Override
+        public void visitConstructorCallExpression(ConstructorCallExpression call) {
+            if (call.getNodeMetaData(StatementMeta.class)!=null) return;
+            super.visitConstructorCallExpression(call);
+
+            // we cannot a target for the constructor call, since we cannot easily
+            // check the meta class of the other class
+            // setMethodTarget(call, "<init>", call.getArguments(), false);
+        }
+        
+        private void setMethodTarget(Expression expression, String name, Expression callArgs, boolean isMethod) {
             if (name==null) return;
             if (!optimizeMethodCall) return;
             if (AsmClassGenerator.containsSpreadExpression(callArgs)) return;
@@ -726,25 +748,62 @@ public class OptimizingStatementWriter extends StatementWriter {
                 paraTypes = new Parameter[size];
                 int i=0;
                 for (Expression exp: args.getExpressions()) {
-                    ClassNode type = BinaryExpressionMultiTypeDispatcher.getType(exp,node);
+                    ClassNode type = typeChooser.resolveType(exp, node);
                     if (!validTypeForCall(type)) return;
                     paraTypes[i] = new Parameter(type,"");
                     i++;
                 }
             } else {
-                ClassNode type = BinaryExpressionMultiTypeDispatcher.getType(callArgs,node);
+                ClassNode type = typeChooser.resolveType(callArgs, node);
                 if (!validTypeForCall(type)) return;
                 paraTypes = new Parameter[]{new Parameter(type,"")};
             }
+
+            MethodNode target;
+            ClassNode type;
+            if (isMethod) {
+                target = node.getMethod(name, paraTypes);
+                if (target==null) return;
+                if (!target.getDeclaringClass().equals(node)) return;
+                if (scope.isInStaticContext() && !target.isStatic()) return;
+                type = target.getReturnType().redirect();
+            } else {
+                type = expression.getType();
+                target = selectConstructor(type, paraTypes);
+                if (target==null) return;
+            }
             
-            MethodNode target = node.getMethod(name, paraTypes);
-            if (target==null) return;
-            if (!target.getDeclaringClass().equals(node)) return;
-            if (scope.isInStaticContext() && !target.isStatic()) return;
             StatementMeta meta = addMeta(expression);
             meta.target = target;
-            meta.type = target.getReturnType().redirect();
+            meta.type = type;
             opt.chainShouldOptimize(true);
+        }
+        
+        private static MethodNode selectConstructor(ClassNode node, Parameter[] paraTypes) {
+            List<ConstructorNode> cl = node.getDeclaredConstructors();
+            MethodNode res = null;
+            for (ConstructorNode cn : cl) {
+                if (parametersEqual(cn.getParameters(), paraTypes)) {
+                    res = cn;
+                    break;
+                }
+            }
+            if (res !=null && res.isPublic()) return res;
+            return null;
+        }
+
+        private static boolean parametersEqual(Parameter[] a, Parameter[] b) {
+            if (a.length == b.length) {
+                boolean answer = true;
+                for (int i = 0; i < a.length; i++) {
+                    if (!a[i].getType().equals(b[i].getType())) {
+                        answer = false;
+                        break;
+                    }
+                }
+                return answer;
+            }
+            return false;
         }
         
         private static boolean validTypeForCall(ClassNode type) {

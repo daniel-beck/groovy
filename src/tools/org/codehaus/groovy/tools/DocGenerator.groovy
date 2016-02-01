@@ -2,8 +2,6 @@ package org.codehaus.groovy.tools
 
 import org.codehaus.groovy.runtime.DefaultGroovyMethods
 import com.thoughtworks.qdox.JavaDocBuilder
-import java.io.File
-import java.util.*
 import org.codehaus.groovy.tools.shell.util.Logger
 
 /**
@@ -111,7 +109,13 @@ class DocGenerator {
         out.withWriter {
             it << templateOverviewFrame.make(binding)
         }
-
+        
+        // the package list
+        out = new File(outputFolder, 'package-list')
+        out.withWriter { writer ->
+            packages.keySet().findAll{ it }.each{ writer.println it }
+        }
+        
         // the allclasses-frame.html
         def templateAllClasses = createTemplate(engine, 'template.allclasses-frame.html')
         out = new File(outputFolder, 'allclasses-frame.html')

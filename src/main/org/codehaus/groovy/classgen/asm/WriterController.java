@@ -31,6 +31,7 @@ import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.MethodVisitor;
 
 public class WriterController {
+
     private AsmClassGenerator acg;
     private MethodVisitor methodVisitor;
     private CompileStack compileStack;
@@ -53,7 +54,9 @@ public class WriterController {
     public boolean optimizeForInt = true;
     private StatementWriter statementWriter;
     private boolean fastPath = false;
-    
+    private TypeChooser typeChooser;
+    private int lineNumber = -1;
+
     public void init(AsmClassGenerator asmClassGenerator, GeneratorContext gcon, ClassVisitor cv, ClassNode cn) {
         Map<String,Boolean> optOptions = cn.getCompileUnit().getConfig().getOptimizationOptions();
         if (optOptions.isEmpty()) {
@@ -91,6 +94,7 @@ public class WriterController {
         } else {
             this.statementWriter = new StatementWriter(this);
         }
+        this.typeChooser = new StatementMetaTypeChooser();
     }
 
     public AsmClassGenerator getAcg() {
@@ -151,6 +155,10 @@ public class WriterController {
 
     public AssertionWriter getAssertionWriter() {
         return assertionWriter;
+    }
+
+    public TypeChooser getTypeChooser() {
+        return typeChooser;
     }
 
     public String getInternalBaseClassName() {
@@ -284,13 +292,27 @@ public class WriterController {
 
     public void switchToFastPath() {
         fastPath = true;
+        resetLineNumber();
     }
 
     public void switchToSlowPath() {
         fastPath = false;
+        resetLineNumber();
     }
 
     public boolean isFastPath() {
         return fastPath;
     }
+    
+    public int getLineNumber() {
+        return lineNumber;
+    }
+    
+    public void setLineNumber(int n) {
+    	lineNumber = n;
+    }
+
+	public void resetLineNumber() {
+		setLineNumber(-1);
+	}
 }

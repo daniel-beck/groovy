@@ -119,6 +119,28 @@ class AbstractHttpServletTest extends GroovyTestCase {
     }
 
     /**
+     * Tests getting URIs as files where filename not available.
+     */
+    void testGetScriptURIasFileNoMapping() {
+
+        def request = [
+                getAttribute: {null},
+                getServletPath: {"servletPath"},
+                getPathInfo: {"pathInfo"}] as HttpServletRequest
+
+        def servletContext = [
+                getRealPath: { arg -> null}] as ServletContext
+
+        def servletConfig = [
+                getServletContext: {servletContext},
+                getInitParameter: {null}] as ServletConfig
+
+        servlet.init(servletConfig)
+        def file = servlet.getScriptUriAsFile(request)
+        assert file == null
+    }
+
+    /**
      * Tests that exception is thrown when resource is not found.
      */
     void testGetResourceConnection_MissingResource() {
@@ -220,7 +242,7 @@ class AbstractHttpServletTest extends GroovyTestCase {
         def connection = servlet.getResourceConnection(servlet.getScriptUri(request))
         //expecting http://somebar/foo
         def actual = connection.getURL().toExternalForm()
-        def expected = new URL("file:realPath/somebar/foo").toExternalForm()
+        def expected = new URL("http:/somebar/foo").toExternalForm()
         assert actual == expected
     }
 
@@ -257,7 +279,7 @@ class AbstractHttpServletTest extends GroovyTestCase {
         def connection = servlet.getResourceConnection(servlet.getScriptUri(request))
         //expecting http://somebar/foo
         def actual = connection.getURL().toExternalForm()
-        def expected = new URL("file:realPath/somebar/bar").toExternalForm()
+        def expected = new URL("http:/somebar/bar").toExternalForm()
         assert actual == expected
     }
 }

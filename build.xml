@@ -86,6 +86,21 @@ $Date$
         </condition>
     </target>
 
+    <target name="exceptionUtils" description="Generate the ExceptionUtils class" depends="-init">
+        <mkdir dir="${targetDirectory}/tools"/>
+        <javac
+                srcdir="config/ant/src"
+                destdir="${targetDirectory}/tools"
+                includeantruntime="false"
+                source="1.5" target="1.5" fork="true" classpathref="compilePath"/>
+        <java classpath="${targetDirectory}/tools"
+              classpathref="compilePath"
+              classname="org.codehaus.groovy.ExceptionUtilsGenerator">
+            <arg value="${mainClassesDirectory}/org/codehaus/groovy/runtime/ExceptionUtils.class"/>
+        </java>
+
+    </target>
+
     <target name="ensureGrammars" description="Ensure all the Antlr generated files are up to date.">
         <mkdir dir="${groovyParserDirectory}"/>
         <antlr target="${antlrDirectory}/groovy.g" outputdirectory="${groovyParserDirectory}">
@@ -155,7 +170,7 @@ $Date$
             description="Compile the Java and Groovy code in the main source.">
     </target>
 
-    <target name="stagedcompile" depends="-init,ensureGrammars,-jvm14BuildWarning" unless="uber">
+    <target name="stagedcompile" depends="-init,ensureGrammars,-jvm14BuildWarning,exceptionUtils" unless="uber">
         <mkdir dir="${mainClassesDirectory}"/>
         <mkdir dir="${toolsClassesDirectory}"/>
         <mkdir dir="${mainClassesDirectory}/META-INF"/>
@@ -752,7 +767,7 @@ $Date$
 
     <target name="-docInit">
         <mkdir dir="${docsDirectory}"/>
-        <property name="docFooter" value="Copyright &amp;copy; 2003-2010 The Codehaus. All rights reserved."/>
+        <property name="docFooter" value="Copyright &amp;copy; 2003-2012 The Codehaus. All rights reserved."/>
         <property name="title" value="Groovy ${groovyVersion}"/>
     </target>
 
@@ -775,10 +790,10 @@ $Date$
             <!-- TODO temp hack - remove once modules are in place -->
             <fileset dir="${jmxSourceDirectory}/main/java" includes="**/*.java"/>
             <fileset dir="${bsfSourceDirectory}/main/java" includes="**/*.java"/>
-            <link href="http://java.sun.com/javase/6/docs/api"/>
-            <link href="http://www.dpml.net/api/ant/1.7.0"/>
-            <link href="http://junit.sourceforge.net/junit3.8.1/javadoc"/>
-            <link href="http://java.sun.com/j2ee/1.4/docs/api"/>
+            <link href="http://docs.oracle.com/javase/6/docs/api/"/>
+            <link href="http://evgeny-goldin.org/javadoc/ant/api/"/>
+            <link href="http://kentbeck.github.com/junit/javadoc/latest/"/>
+            <link href="http://docs.oracle.com/javaee/6/api/"/>
             <link href="http://www.antlr2.org/javadoc"/>
             <link href="http://commons.apache.org/cli/api-release"/>
         </javadoc>
@@ -814,10 +829,10 @@ $Date$
                 header="${title}"
                 footer="${docFooter}"
                 overview="src/main/overview.html">
-            <link packages="javax.servlet.,javax.management." href="http://java.sun.com/j2ee/1.4/docs/api"/>
-            <link packages="java.,org.xml.,javax.,org.xml." href="http://java.sun.com/javase/6/docs/api"/>
-            <link packages="org.apache.ant.,org.apache.tools.ant." href="http://www.dpml.net/api/ant/1.7.0"/>
-            <link packages="org.junit.,junit." href="http://junit.sourceforge.net/junit3.8.1/javadoc"/>
+            <link packages="javax.servlet.,javax.management." href="http://docs.oracle.com/javaee/6/api/"/>
+            <link packages="java.,org.xml.,javax.,org.w3c." href="http://docs.oracle.com/javase/6/docs/api/"/>
+            <link packages="org.apache.ant.,org.apache.tools.ant." href="http://evgeny-goldin.org/javadoc/ant/api/"/>
+            <link packages="org.junit.,junit." href="http://kentbeck.github.com/junit/javadoc/latest/"/>
             <link packages="org.apache.commons.cli." href="http://commons.apache.org/cli/api-release"/>
             <link packages="antlr." href="http://www.antlr2.org/javadoc"/>
         </groovydoc>
@@ -928,6 +943,7 @@ $Date$
                 <exclude name="classes/**"/>
                 <exclude name="cruise/**"/>
                 <exclude name=".clover/*"/>
+                <exclude name=".git/**"/>
                 <exclude name="local.build.properties"/>
                 <exclude name="cobertura.ser"/>
                 <exclude name="junitvmwatcher*.properties"/>

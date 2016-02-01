@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2009 the original author or authors.
+ * Copyright 2003-2012 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -495,6 +495,11 @@ class GroovyMethodsTest extends GroovySwingTestCase {
     void testCountForString() {
         def string = 'google'
         assert string.count('g') == 2
+    }
+
+    void testCountForStringEdgeCases_GROOVY5858() {
+        def blank6 = ' ' * 6
+        8.times { assert blank6.count(' ' * it) == 7 - it }
     }
 
     void testJoinForIterator() {
@@ -1108,6 +1113,86 @@ class GroovyMethodsTest extends GroovySwingTestCase {
         data.each { Class clazz, object ->
             assert clazz.isInstance( object.take( 5 ) )
             assert clazz.isInstance( object.drop( 5 ) )
+        }
+    }
+
+    void testContainsForPrimitiveArrays() {
+        boolean[] bools = [false]
+        byte[] bytes = [1, 3]
+        short[] shorts = [1, 3]
+        int[] ints = [1, 3]
+        long[] longs = [1, 3]
+        float[] floats = [1.0f, 3.0f]
+        double[] doubles = [1.0d, 3.0d]
+        char[] chars = ['a' as char, 'c' as char]
+
+        assert bools.contains(false)
+        assert !bools.contains(true)
+        assert bytes.contains(3)
+        assert !bytes.contains(2)
+        assert shorts.contains(3)
+        assert !shorts.contains(2)
+        assert ints.contains(3)
+        assert !ints.contains(2)
+        assert longs.contains(3)
+        assert !longs.contains(2)
+        assert longs.contains(3)
+        assert !longs.contains(2)
+        assert floats.contains(3.0f)
+        assert !floats.contains(2.0f)
+        assert doubles.contains(3.0d)
+        assert !doubles.contains(2.0d)
+        assert chars.contains('c' as char)
+        assert !chars.contains('b' as char)
+    }
+
+    void testArrayContains() {
+        String[] vowels = ['a', 'e', 'i', 'o', 'u']
+        assert vowels.contains('u')
+        assert !vowels.contains('x')
+    }
+
+    void testListTakeWhile() {
+        def data = [
+            new ArrayList( [ 1, 3, 2 ] ),
+            new LinkedList( [ 1, 3, 2 ] ),
+            new Stack() {{ addAll( [ 1, 3, 2 ] ) }},
+            new Vector( [ 1, 3, 2 ] ),
+        ]
+        data.each {
+            assert it.takeWhile{ it < 0 } == []
+            assert it.takeWhile{ it < 1 } == []
+            assert it.takeWhile{ it < 3 } == [ 1 ]
+            assert it.takeWhile{ it < 4 } == [ 1, 3, 2 ]
+        }
+    }
+
+    void testArrayTakeWhile() {
+        String[] items = [ 'ant', 'bee', 'cat' ]
+
+        assert items.takeWhile{ it == '' } == [] as String[]
+        assert items.takeWhile{ it != 'cat' } == [ 'ant', 'bee' ] as String[]
+        assert items.takeWhile{ it != '' } == [ 'ant', 'bee', 'cat' ] as String[]
+    }
+
+    void testIteratorTakeWhile() {
+        int a = 1
+        Iterator items = [ hasNext:{ true }, next:{ a++ } ] as Iterator
+
+        assert items.takeWhile{ it < 5 }.collect { it } == [ 1, 2, 3, 4 ]
+    }
+
+    void testCharSequenceTakeWhile() {
+        def data = [ 'groovy',      // String
+                     "${'groovy'}", // GString
+                     java.nio.CharBuffer.wrap( 'groovy' ),
+                     new StringBuffer( 'groovy' ),
+                     new StringBuilder( 'groovy' ) ]
+        data.each {
+            // Need toString() as CharBuffer.subSequence returns a java.nio.StringCharBuffer
+            assert it.takeWhile{ it == '' }.toString() == ''
+            assert it.takeWhile{ it != 'v' }.toString() == 'groo'
+            assert it.takeWhile{ it }.toString() == 'groovy'
         }
     }
 }

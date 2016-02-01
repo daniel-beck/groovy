@@ -15,6 +15,22 @@
  */
 package groovy.lang;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
 import org.codehaus.groovy.reflection.CachedClass;
 import org.codehaus.groovy.reflection.MixinInMetaClass;
 import org.codehaus.groovy.runtime.DefaultCachedMethodKey;
@@ -30,26 +46,12 @@ import org.codehaus.groovy.runtime.callsite.StaticMetaClassSite;
 import org.codehaus.groovy.runtime.metaclass.ClosureMetaMethod;
 import org.codehaus.groovy.runtime.metaclass.ClosureStaticMetaMethod;
 import org.codehaus.groovy.runtime.metaclass.DefaultMetaClassInfo;
+import org.codehaus.groovy.runtime.metaclass.MethodSelectionException;
 import org.codehaus.groovy.runtime.metaclass.MixedInMetaClass;
 import org.codehaus.groovy.runtime.metaclass.MixinInstanceMetaMethod;
 import org.codehaus.groovy.runtime.metaclass.OwnedMetaClass;
 import org.codehaus.groovy.runtime.metaclass.ThreadManagedMetaBeanProperty;
-import org.codehaus.groovy.runtime.wrappers.Wrapper;
 import org.codehaus.groovy.util.FastArray;
-
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * ExpandoMetaClass is a MetaClass that behaves like an Expando, allowing the addition or replacement
@@ -245,10 +247,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * synchronized. Should this happen during a modification, then the method cannot be selected or called unless the
  * modification is completed.
  * <p/>
- * WARNING: This MetaClass uses a thread-bound ThreadLocal instance to store and retrieve properties.
- * In addition properties stored use soft references so they are both bound by the life of the Thread and by the soft
- * references. The implication here is you should NEVER use dynamic properties if you want their values to stick around
- * for long periods because as soon as the JVM is running low on memory or the thread dies they will be garbage collected.
  *
  * @author Graeme Rocher
  * @since 1.5
@@ -274,6 +272,9 @@ public class ExpandoMetaClass extends MetaClassImpl implements GroovyObject {
     private volatile boolean modified;
 
     private boolean initCalled;
+    private final ReentrantReadWriteLock rwl = new ReentrantReadWriteLock();
+    private final Lock readLock = rwl.readLock();
+    private final Lock writeLock = rwl.writeLock();
     
     final private boolean allowChangesAfterInit;
     public boolean inRegistry;
@@ -363,7 +364,14 @@ public class ExpandoMetaClass extends MetaClassImpl implements GroovyObject {
                     MetaMethod noParam = pickMethod(methodName, new Class[0]);
                     // if the current call itself is with empty arg class array, no need to recurse with 'new Class[0]'
                     if (noParam == null && arguments.length != 0) {
-                        findMixinMethod(methodName, new Class[0]);
+                        try {
+                            findMixinMethod(methodName, new Class[0]);
+                        } catch (MethodSelectionException msex) {
+                            /*
+                             * Here we just additionally tried to find another no-arg mixin method of the same name and register that as well, if found.
+                             * Safe to ignore a MethodSelectionException in this additional exercise. (GROOVY-4999)
+                             */
+                        }
                     }
                 }
 
@@ -464,11 +472,19 @@ public class ExpandoMetaClass extends MetaClassImpl implements GroovyObject {
      * @see groovy.lang.MetaClassImpl#initialize()
      */
 
-    public synchronized void initialize() {
-        if (!isInitialized()) {
-            super.initialize();
-            setInitialized(true);
-            this.initCalled = true;
+    public void initialize() {
+        try {
+            writeLock.lock();
+            if (!isInitialized()) {
+                super.initialize();
+                setInitialized(true);
+                this.initCalled = true;
+            }
+        } finally {
+            // downgrade to readlock before releasing just in case
+            readLock.lock();
+            writeLock.unlock();
+            readLock.unlock();
         }
     }
 
@@ -476,11 +492,16 @@ public class ExpandoMetaClass extends MetaClassImpl implements GroovyObject {
      * Checks if the meta class is initialized.
      * @see groovy.lang.MetaClassImpl#isInitialized()
      */
-    protected synchronized boolean isInitialized() {
-        return this.initialized;
+    protected boolean isInitialized() {
+        try {
+            readLock.lock();
+            return this.initialized;
+        } finally {
+            readLock.unlock();
+        }
     }
 
-    protected synchronized void setInitialized(boolean b) {
+    protected void setInitialized(boolean b) {
         this.initialized = b;
     }
 
@@ -781,6 +802,7 @@ public class ExpandoMetaClass extends MetaClassImpl implements GroovyObject {
 
     protected synchronized void performOperationOnMetaClass(Callable c) {
         try {
+            writeLock.lock();
             if (allowChangesAfterInit) {
                 setInitialized(false);
             }
@@ -790,6 +812,19 @@ public class ExpandoMetaClass extends MetaClassImpl implements GroovyObject {
             if (initCalled) {
                 setInitialized(true);
             }
+            // downgrade to readlock before releasing just in case
+            readLock.lock();
+            writeLock.unlock();
+            readLock.unlock();
+        }
+    }
+    
+    protected void checkInitalised() {
+        try {
+            readLock.lock();
+            super.checkInitalised();
+        } finally {
+            readLock.unlock();
         }
     }
 

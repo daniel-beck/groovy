@@ -19,10 +19,7 @@ import groovy.lang.GroovyClassLoader;
 import groovy.lang.GroovyRuntimeException;
 
 import org.codehaus.groovy.GroovyBugError;
-import org.codehaus.groovy.ast.ASTNode;
-import org.codehaus.groovy.ast.ClassNode;
-import org.codehaus.groovy.ast.CompileUnit;
-import org.codehaus.groovy.ast.ModuleNode;
+import org.codehaus.groovy.ast.*;
 import org.codehaus.groovy.classgen.*;
 import org.codehaus.groovy.control.customizers.CompilationCustomizer;
 import org.codehaus.groovy.control.io.InputStreamReaderSource;
@@ -85,6 +82,7 @@ public class CompilationUnit extends ProcessingUnit {
     protected ResolveVisitor resolveVisitor;
     protected StaticImportVisitor staticImportVisitor;
     protected OptimizerVisitor optimizer;
+    protected ClassNodeResolver classNodeResolver;
 
     LinkedList[] phaseOperations;
     LinkedList[] newPhaseOperations;
@@ -202,6 +200,13 @@ public class CompilationUnit extends ProcessingUnit {
                 iv.visitClass(classNode);
             }
         }, Phases.CANONICALIZATION);
+        addPhaseOperation(new PrimaryClassNodeOperation() {
+            public void call(SourceUnit source, GeneratorContext context,
+                             ClassNode classNode) throws CompilationFailedException {
+                EnumCompletionVisitor ecv = new EnumCompletionVisitor(CompilationUnit.this, source);
+                ecv.visitClass(classNode);
+            }
+        }, Phases.CANONICALIZATION);
 
         // apply configuration customizers if any
         if (configuration != null) {
@@ -211,6 +216,7 @@ public class CompilationUnit extends ProcessingUnit {
             }
         }
         this.classgenCallback = null;
+        this.classNodeResolver = new ClassNodeResolver();
     }
 
     /**
@@ -598,6 +604,7 @@ public class CompilationUnit extends ProcessingUnit {
                 VariableScopeVisitor scopeVisitor = new VariableScopeVisitor(source);
                 scopeVisitor.visitClass(node);
 
+                resolveVisitor.setClassNodeResolver(classNodeResolver);
                 resolveVisitor.startResolving(node, source);
             }
 
@@ -954,7 +961,13 @@ public class CompilationUnit extends ProcessingUnit {
                 ClassNode classNode = (ClassNode) classNodes.next();
                 context = classNode.getModule().getContext();
                 if (context == null || context.phase < phase || (context.phase == phase && !context.phaseComplete)) {
-                    body.call(context, new GeneratorContext(this.ast), classNode);
+                    int offset = 1;
+                    Iterator<InnerClassNode> iterator = classNode.getInnerClasses();
+                    while (iterator.hasNext()) {
+                        iterator.next();
+                        offset++;
+                    }
+                    body.call(context, new GeneratorContext(this.ast, offset), classNode);
                 }
             } catch (CompilationFailedException e) {
                 // fall through, getErrorReporter().failIfErrors() will trigger
@@ -1013,4 +1026,14 @@ public class CompilationUnit extends ProcessingUnit {
     private void changeBugText(GroovyBugError e, SourceUnit context) {
         e.setBugText("exception in phase '" + getPhaseDescription() + "' in source unit '" + ((context != null) ? context.getName() : "?") + "' " + e.getBugText());
     }
+    
+    public ClassNodeResolver getClassNodeResolver() {
+        return classNodeResolver;
+    }
+
+
+    public void setClassNodeResolver(ClassNodeResolver classNodeResolver) {
+        this.classNodeResolver = classNodeResolver;
+    }
+
 }

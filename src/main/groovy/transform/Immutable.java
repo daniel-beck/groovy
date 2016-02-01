@@ -1,5 +1,5 @@
 /*
- * Copyright 2008-2010 the original author or authors.
+ * Copyright 2008-2012 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,9 +49,9 @@ import java.lang.annotation.Target;
  * <li>The class is automatically made final.
  * <li>Properties must be of an immutable type or a type with a strategy for handling non-immutable
  * characteristics. Specifically, the type must be one of the primitive or wrapper types, Strings, enums,
- * other {@code @Immutable} classes or known immutables (e.g. java.awt.Color, java.net.URI). Also handled are
- * Cloneable classes, collections, maps and arrays, and other "effectively immutable" classes with
- * special handling (e.g. java.util.Date).
+ * other {@code @Immutable} classes or known immutables (e.g. java.awt.Color, java.net.URI, java.util.UUID).
+ * Also handled are Cloneable classes, collections, maps and arrays, and other "effectively immutable"
+ * classes with special handling (e.g. java.util.Date).
  * <li>Properties automatically have private, final backing fields with getters.
  * Attempts to update the property will result in a {@code ReadOnlyPropertyException}.
  * <li>A map-based constructor is provided which allows you to set properties by name.
@@ -87,7 +87,13 @@ import java.lang.annotation.Target;
  * </ul>
  * <p/>
  * Immutable classes are particularly useful for functional and concurrent styles of programming
- * and for use as key values within maps.
+ * and for use as key values within maps. If you want similar functionality to what this annotation
+ * provides but don't need immutability then consider using {@code @Canonical}.
+ * <p/>
+ * Customising behaviour:
+ * <p/>
+ * You can customise the toString() method provided for you by {@code @Immutable}
+ * by also adding the {@code @ToString} annotation to your class definition.
  * <p/>
  * Limitations:
  * <ul>
@@ -113,6 +119,9 @@ import java.lang.annotation.Target;
  * </ul>
  *
  * @author Paul King
+ * @author Andre Steingress
+ * @see groovy.transform.ToString
+ * @see groovy.transform.Canonical
  * @since 1.7
  */
 @java.lang.annotation.Documented
@@ -120,4 +129,26 @@ import java.lang.annotation.Target;
 @Target({ElementType.TYPE})
 @GroovyASTTransformationClass("org.codehaus.groovy.transform.ImmutableASTTransformation")
 public @interface Immutable {
+    /**
+     * Allows you to provide {@code @Immutable} with a list of classes which
+     * are deemed immutable. By supplying a class in this list, you are vouching
+     * for its immutability and {@code @Immutable} will do no further checks.
+     * Example:
+     * <pre>
+     * import groovy.transform.*
+     * {@code @Immutable}(knownImmutableClasses = [Address])
+     * class Person {
+     *     String first, last
+     *     Address address
+     * }
+     *
+     * {@code @TupleConstructor}
+     * class Address {
+     *     final String street
+     * }
+     * </pre>
+     *
+     * @since 1.8.7
+     */
+    Class[] knownImmutableClasses() default {};
 }

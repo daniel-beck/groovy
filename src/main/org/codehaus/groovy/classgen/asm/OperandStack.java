@@ -324,23 +324,31 @@ public class OperandStack {
         } else if (primTop) {
             // top is primitive, target is not
             // so box and do groovy cast
-            box();
-            (new ClassExpression(targetType)).visit(controller.getAcg());
-            remove(1);
-            castToTypeMethod.call(mv);
+            ClassNode boxedType = box();
+            castToTypeIfNecessary(boxedType, targetType);
         } else if (primTarget) {
             // top is not primitive so unbox
             // leave that BH#doCast later
-        } else if (!(top.isDerivedFrom(targetType))) {
-            // top and target are not primitive and top is not derived from target
+        } else {
+            castToTypeIfNecessary(top, targetType);
+        }
+        if (ClassHelper.isNumberType(top) && primTarget && ClassHelper.isNumberType(targetType)) {
+            BytecodeHelper.doCastToPrimitive(mv, top, targetType);
+        } else {
+            BytecodeHelper.doCast(mv,targetType);
+        }
+        replace(targetType);
+    }
+
+    private void castToTypeIfNecessary(final ClassNode sourceType, final ClassNode targetType) {
+        if (!sourceType.isDerivedFrom(targetType) && !sourceType.implementsInterface(targetType)) {
+            MethodVisitor mv = controller.getMethodVisitor();
             (new ClassExpression(targetType)).visit(controller.getAcg());
             remove(1);
             castToTypeMethod.call(mv);
         }
-        BytecodeHelper.doCast(mv,targetType);
-        replace(targetType);
     }
-    
+
     private boolean convertFromInt(ClassNode target) {
         int convertCode = 0;
         if (target==ClassHelper.char_TYPE){
@@ -457,7 +465,7 @@ public class OperandStack {
         if (value == null) {
             mv.visitInsn(ACONST_NULL);
         } else if (asPrimitive) {
-            mv.visitLdcInsn(value);
+            pushPrimitiveConstant(mv, value, type);
         } else if (value instanceof Character) {
             mv.visitLdcInsn(value);
             BytecodeHelper.box(mv, type); // does not change this.stack field contents
@@ -474,16 +482,16 @@ public class OperandStack {
                 mv.visitInsn(DUP);
                 mv.visitLdcInsn(value.toString());
                 mv.visitMethodInsn(INVOKESPECIAL, className, "<init>", "(Ljava/lang/String;)V");
-            } else if (value instanceof Long) {
-                long l = (Long) value;
-                if (l==0) {
-                    mv.visitInsn(LCONST_0);
-                } else if (l==1) {
-                    mv.visitInsn(LCONST_1);
-                } else {
-                    mv.visitLdcInsn(value);
-                }
-                BytecodeHelper.box(mv, ClassHelper.getUnwrapper(type)); // does not change this.stack field contents
+            } else if (value instanceof Integer
+                    || value instanceof Byte
+                    || value instanceof Short
+                    || value instanceof Long
+                    || value instanceof Float
+                    || value instanceof Double
+                    ) {
+                ClassNode primType = ClassHelper.getUnwrapper(type);
+                pushPrimitiveConstant(mv, value, primType);
+                BytecodeHelper.box(mv, primType); // does not change this.stack field contents
                 BytecodeHelper.doCast(mv, type);
             } else {
                 mv.visitLdcInsn(value);
@@ -502,6 +510,78 @@ public class OperandStack {
         }
         
         push(type);
+    }
+
+    private void pushPrimitiveConstant(final MethodVisitor mv, final Object value, final ClassNode type) {
+        boolean isInt = ClassHelper.int_TYPE.equals(type);
+        boolean isShort = ClassHelper.short_TYPE.equals(type);
+        boolean isByte = ClassHelper.byte_TYPE.equals(type);
+        if (isInt || isShort || isByte) {
+            int val = isInt?(Integer)value:isShort?(Short)value:(Byte)value;
+            switch (val) {
+                case 0:
+                    mv.visitInsn(ICONST_0);
+                    break;
+                case 1:
+                    mv.visitInsn(ICONST_1);
+                    break;
+                case 2:
+                    mv.visitInsn(ICONST_2);
+                    break;
+                case 3:
+                    mv.visitInsn(ICONST_3);
+                    break;
+                case 4:
+                    mv.visitInsn(ICONST_4);
+                    break;
+                case 5:
+                    mv.visitInsn(ICONST_5);
+                    break;
+                default:
+                    if (val>=Byte.MIN_VALUE && val<=Byte.MAX_VALUE) {
+                        mv.visitIntInsn(BIPUSH, val);
+                    } else if (val>=Short.MIN_VALUE && val<=Short.MAX_VALUE) {
+                        mv.visitIntInsn(SIPUSH, val);
+                    } else {
+                        mv.visitLdcInsn(value);
+                    }
+            }
+        } else if (ClassHelper.long_TYPE.equals(type)) {
+            if ((Long)value==0L) {
+                mv.visitInsn(LCONST_0);
+            } else if ((Long)value==1L) {
+                mv.visitInsn(LCONST_1);
+            } else {
+                mv.visitLdcInsn(value);
+            }
+        } else if (ClassHelper.float_TYPE.equals(type)) {
+            if ((Float)value==0f) {
+                mv.visitInsn(FCONST_0);
+            } else if ((Float)value==1f) {
+                mv.visitInsn(FCONST_1);
+            } else if ((Float)value==2f) {
+                mv.visitInsn(FCONST_2);
+            } else {
+                mv.visitLdcInsn(value);
+            }
+        } else if (ClassHelper.double_TYPE.equals(type)) {
+            if ((Double)value==0d) {
+                mv.visitInsn(DCONST_0);
+            } else if ((Double)value==1d) {
+                mv.visitInsn(DCONST_1);
+            } else {
+                mv.visitLdcInsn(value);
+            }
+        } else if (ClassHelper.boolean_TYPE.equals(type)) {
+            boolean b = (Boolean) value;
+            if (b) {
+                mv.visitInsn(ICONST_1);
+            } else {
+                mv.visitInsn(ICONST_0);
+            }
+        } else {
+            mv.visitLdcInsn(value);
+        }
     }
 
     public void pushDynamicName(Expression name) {
@@ -547,6 +627,7 @@ public class OperandStack {
         ClassNode type = variable.getType();
         // value is on stack
         if (variable.isHolder()) {
+            doGroovyCast(type);
             box();
             mv.visitVarInsn(ALOAD, idx);
             mv.visitTypeInsn(CHECKCAST, "groovy/lang/Reference");
